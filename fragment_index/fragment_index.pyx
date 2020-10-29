@@ -137,7 +137,14 @@ cpdef size_t total_bins_for_mass(int bins_per_dalton, double max_fragment_size) 
 
 
 cdef size_t bin_for_mass(fragment_index_t* self, double mass) nogil:
-    return <size_t>_round(mass * self.bins_per_dalton)
+    cdef:
+        size_t i
+    i = <size_t>_round(mass * self.bins_per_dalton)
+    if i > self.size:
+        i = self.size - 1
+    elif i < 0:
+        i = 0
+    return i
 
 
 cdef void fragment_index_sort(fragment_index_t* self) nogil:
@@ -179,12 +186,16 @@ cdef int fragment_index_search(fragment_index_t* self, double mass, double error
     low = mass - (mass * error_tolerance)
     if low <= 0:
         low_bin = 0
+    elif low >= self.max_fragment_size:
+        low_bin = self.size - 1
     else:
         low_bin = bin_for_mass(self, low)
     if low_bin != 0:
         low_bin -= 1
         if fragment_list_highest_mass(&self.bins[low_bin]) < low:
             low_bin += 1
+    elif low_bin >= self.size:
+        low_bin = self.size - 1
     high = mass + (mass * error_tolerance)
     if high >= self.max_fragment_size:
         high_bin = self.size - 1
@@ -197,8 +208,8 @@ cdef int fragment_index_search(fragment_index_t* self, double mass, double error
 
     iterator.index = self
     iterator.low_bin = low_bin
-    iterator.high_bin = high_bin
     iterator.current_bin = low_bin
+    iterator.high_bin = high_bin
     iterator.position_range.start = 0
     iterator.position_range.end = 0
 
@@ -248,6 +259,8 @@ cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double qu
         interval_t q_range
     query = query - (query * error_tolerance)
     i = bin_for_mass(self.index, query)
+    if i < 0:
+        i = 0
     if i > 0:
         if fragment_list_highest_mass(&self.index.bins[i - 1]) > query:
             i -= 1
