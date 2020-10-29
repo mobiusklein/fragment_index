@@ -8,29 +8,9 @@ cdef extern from * nogil:
     int printf (const char *template, ...)
     void qsort (void *base, unsigned short n, unsigned short w, int (*cmp_func)(void*, void*))
 
-cimport numpy as np
-
-ctypedef np.uint64_t uint64_t
-ctypedef np.uint32_t uint32_t
-ctypedef np.float32_t float32_t
-ctypedef np.uint8_t uint8_t
-
 
 cdef double _round(double x) nogil:
     return floor(x + 0.5)
-
-
-cpdef enum SeriesEnum:
-    b = 1
-    y = 2
-    c = 3
-    z = 4
-
-
-cdef struct fragment_t:
-    float32_t mass
-    SeriesEnum series
-    uint64_t parent_id
 
 
 cdef int compare_by_mass(const void * a, const void * b) nogil:
@@ -40,18 +20,6 @@ cdef int compare_by_mass(const void * a, const void * b) nogil:
         return 0
     elif (<fragment_t*>a).mass > (<fragment_t*>b).mass:
         return 1
-
-
-
-cdef struct fragment_list_t:
-    fragment_t* v
-    size_t used
-    size_t size
-
-
-cdef struct interval_t:
-    size_t start
-    size_t end
 
 
 cdef int init_fragment_list(fragment_list_t* self, size_t size) nogil:
@@ -135,13 +103,6 @@ cdef int fragment_list_binary_search(fragment_list_t* self, double query, double
     return 1
 
 
-cdef struct fragment_index_t:
-    fragment_list_t* bins
-    size_t size
-    int bins_per_dalton
-    double max_fragment_size
-
-
 cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=1000, double max_fragment_size=3000) nogil:
     cdef:
         size_t total_bins, i
@@ -182,17 +143,6 @@ cdef size_t bin_for_mass(fragment_index_t* self, double mass) nogil:
 cdef void fragment_index_sort(fragment_index_t* self) nogil:
     for i in range(self.size):
         fragment_list_sort(&self.bins[i])
-
-
-cdef struct fragment_index_search_t:
-    fragment_index_t* index
-    double query
-    double error_tolerance
-    size_t low_bin
-    size_t high_bin
-    size_t current_bin
-    interval_t position_range
-    size_t position
 
 
 cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil:
@@ -262,12 +212,6 @@ cdef int fragment_index_search(fragment_index_t* self, double mass, double error
     return 0
 
 
-cdef struct fragment_index_traverse_t:
-    fragment_index_t* index
-    size_t current_bin
-    size_t position
-
-
 cdef int fragment_index_traverse(fragment_index_t* self, fragment_index_traverse_t* iterator) nogil:
     iterator.index = self
     iterator.current_bin = 0
@@ -316,9 +260,6 @@ cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double qu
 
 
 cdef class FragmentList(object):
-    cdef:
-        fragment_list_t* fragments
-        public bint owned
 
     @staticmethod
     cdef FragmentList _create(fragment_list_t* pointer):
@@ -401,10 +342,6 @@ cdef class FragmentList(object):
 
 
 cdef class FragmentIndex(object):
-    cdef:
-        fragment_index_t* index
-        public list bins
-        public bint owned
 
     @staticmethod
     cdef FragmentIndex _create(fragment_index_t* pointer):
@@ -516,9 +453,6 @@ cdef class FragmentIndex(object):
 
 @cython.final
 cdef class FragmentIndexSearchIterator(object):
-    cdef:
-        fragment_index_search_t* iterator
-        public bint owned
 
     @staticmethod
     cdef FragmentIndexSearchIterator _create(fragment_index_search_t* iterator):
@@ -575,9 +509,6 @@ cdef class FragmentIndexSearchIterator(object):
 
 @cython.final
 cdef class FragmentIndexTraverseIterator(object):
-    cdef:
-        fragment_index_traverse_t* iterator
-        public bint owned
 
     @staticmethod
     cdef FragmentIndexTraverseIterator _create(fragment_index_traverse_t* iterator):

@@ -12,8 +12,10 @@ AGP2 = "MALSWVLTVLSLLPLLEAQIPLCANLVPVPITNATLDRITGKWFYIASAFRNEEYNKSVQEIQATFFYFTPN
 
 # Add each peptide's product ions to the index, keyed to the peptide's
 # yield order.
+precursor_index = []
 for j, peptide in enumerate(parser.cleave(AGP2, 'trypsin')):
     print(peptide)
+    precursor_index.append(j)
     for i in range(1, len(peptide) - 1):
         m = mass.fast_mass(peptide[:i], ion_type='b')
         index.add(m, fragment_index.SeriesEnum.b, j)
@@ -44,4 +46,23 @@ iterator = index.search(57.0320, 1e-5)
 for f in iterator:
     print(f)
 
+```
+
+A more serious application usage of that index:
+```python
+from math import log
+from collections import defaultdict
+
+# Load some peaks to match to the neutral mass fragments
+peak_list = load_peaks()
+
+# A holder for some match statistic
+scores = defaultdict(float)
+
+for mass, intensity in peak_list:
+    # Skip to the matches for mass
+    for frag in index.search(mass, 1e-5):
+        scores[frag['parent_id']] += log(intensity)
+
+best_matches_descending = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 ```
