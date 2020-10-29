@@ -48,7 +48,7 @@ for f in iterator:
 
 ```
 
-A more serious application usage of that index:
+A more serious application using that index:
 ```python
 from math import log
 from collections import defaultdict

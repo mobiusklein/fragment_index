@@ -1,5 +1,5 @@
 # cython: embedsignatures:True
-# distutils: include_dirs=c:\\users\\joshua\\miniconda2\\lib\\site-packages\\numpy\\core\\include
+
 cimport cython
 from libc.stdlib cimport malloc, realloc, calloc, free, qsort
 from libc.math cimport floor, fabs
