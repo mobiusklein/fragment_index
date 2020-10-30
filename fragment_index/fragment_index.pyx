@@ -13,6 +13,9 @@ cdef double _round(double x) nogil:
     return floor(x + 0.5)
 
 
+cdef double INF = float('inf')
+
+
 cdef int compare_by_mass(const void * a, const void * b) nogil:
     if (<fragment_t*>a).mass < (<fragment_t*>b).mass:
         return -1
@@ -22,10 +25,21 @@ cdef int compare_by_mass(const void * a, const void * b) nogil:
         return 1
 
 
+cdef int compare_by_parent_id(const void * a, const void * b) nogil:
+    if (<fragment_t*>a).parent_id < (<fragment_t*>b).parent_id:
+        return -1
+    elif (<fragment_t*>a).parent_id == (<fragment_t*>b).parent_id:
+        return 0
+    elif (<fragment_t*>a).parent_id > (<fragment_t*>b).parent_id:
+        return 1
+
+
 cdef int init_fragment_list(fragment_list_t* self, size_t size) nogil:
     self.v = <fragment_t*>malloc(sizeof(fragment_t) * size)
     self.used = 0
     self.size = size
+    self.min_mass = self.max_mass = -1
+    self.sort_type = SortingEnum.unsorted
     if self.v == NULL:
         return 1
     return 0
@@ -44,23 +58,52 @@ cdef int fragment_list_append(fragment_list_t* self, fragment_t fragment) nogil:
         self.size = self.size * 2
     self.v[self.used] = fragment
     self.used += 1
+    # self.min_mass = self.max_mass = -1
+    # self.sort_type = SortingEnum.unsorted
     return 0
 
 
-cdef void fragment_list_sort(fragment_list_t* self) nogil:
-    qsort(self.v, self.used, sizeof(fragment_t), compare_by_mass)
-
+cdef void fragment_list_sort(fragment_list_t* self, SortingEnum sort_type) nogil:
+    if sort_type == SortingEnum.by_mass:
+        qsort(self.v, self.used, sizeof(fragment_t), compare_by_mass)
+    elif sort_type == SortingEnum.by_parent:
+        qsort(self.v, self.used, sizeof(fragment_t), compare_by_parent_id)
+    self.sort_type = sort_type
 
 cdef double fragment_list_lowest_mass(fragment_list_t* self) nogil:
+    cdef:
+        size_t i, n
+        double mass
     if self.used == 0:
         return 0
-    return self.v[0].mass
+    if self.min_mass != -1:
+        return self.min_mass
+    if self.sort_type == SortingEnum.by_mass:
+        self.min_mass = self.v[0].mass
+    else:
+        mass = INF
+        for i in range(self.used):
+            mass = min(self.v[i].mass, mass)
+        self.min_mass = mass
+    return self.min_mass
 
 
 cdef double fragment_list_highest_mass(fragment_list_t* self) nogil:
+    cdef:
+        size_t i
+        double mass
     if self.used == 0:
         return 0
-    return self.v[self.used - 1].mass
+    if self.max_mass != -1:
+        return self.max_mass
+    if self.sort_type == SortingEnum.by_mass:
+        self.max_mass = self.v[self.used - 1].mass
+    else:
+        mass = 0
+        for i in range(self.used):
+            mass = max(self.v[i].mass, mass)
+        self.max_mass = mass
+    return self.max_mass
 
 
 @cython.cdivision(True)
@@ -112,7 +155,9 @@ cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=1000, d
     self.max_fragment_size = max_fragment_size
     total_bins = total_bins_for_mass(bins_per_dalton, max_fragment_size)
     self.size = total_bins
-
+    self.sort_type = SortingEnum.unsorted
+    self.parent_index = <fragment_list_t*>malloc(sizeof(fragment_list_t))
+    init_fragment_list(self.parent_index, 64)
     self.bins = <fragment_list_t*>calloc(total_bins, sizeof(fragment_list_t))
     for i in range(self.size):
         result = init_fragment_list(&self.bins[i], 2)
@@ -126,6 +171,8 @@ cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=1000, d
 
 
 cdef int free_fragment_index(fragment_index_t* self) nogil:
+    free_fragment_list(self.parent_index)
+    free(self.parent_index)
     for i in range(self.size):
         free_fragment_list(&self.bins[i])
     free(self.bins)
@@ -147,9 +194,35 @@ cdef size_t bin_for_mass(fragment_index_t* self, double mass) nogil:
     return i
 
 
-cdef void fragment_index_sort(fragment_index_t* self) nogil:
+cdef void fragment_index_sort(fragment_index_t* self, SortingEnum sort_type) nogil:
     for i in range(self.size):
-        fragment_list_sort(&self.bins[i])
+        fragment_list_sort(&self.bins[i], sort_type)
+    self.sort_type = sort_type
+
+
+cdef int fragment_index_add_parent(fragment_index_t* self, double mass, uint64_t parent_id) nogil:
+    cdef:
+        fragment_t f
+    if self.parent_index.used > 0 and (self.parent_index.v[self.parent_index.used - 1].mass - mass) > 1e-3:
+        return 2
+    f.mass = mass
+    f.series = SeriesEnum.parent
+    f.parent_id = parent_id
+    return fragment_list_append(self.parent_index, f)
+
+
+cdef int fragment_index_parents_for(fragment_index_t* self, double mass, double error_tolerance, interval_t* out) nogil:
+    return fragment_list_binary_search(self.parent_index, mass, error_tolerance, out)
+
+
+cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, double high, double error_tolerance, interval_t* out) nogil:
+    cdef:
+        interval_t tmp
+    fragment_index_parents_for(self, low, error_tolerance, &tmp)
+    out.start = tmp.start
+    fragment_index_parents_for(self, high, error_tolerance, &tmp)
+    out.end = tmp.end
+    return 0
 
 
 cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil:
@@ -161,13 +234,32 @@ cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil:
 
 
 cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* fragment) nogil:
+    cdef:
+        size_t i
     if self.position < self.position_range.end:
         fragment[0] = self.index.bins[self.current_bin].v[self.position]
-        self.position += 1
+        if self.index.sort_type == SortingEnum.by_mass:
+            self.position += 1
+        else:
+            self.position += 1
+            i = self.position
+            for i in range(self.position, self.index.bins[self.current_bin].used):
+                if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
+                    break
+            self.position = i
     if self.position == self.position_range.end:
         while self.current_bin <= self.high_bin:
             self.current_bin += 1
-            fragment_list_binary_search(&self.index.bins[self.current_bin], self.query, self.error_tolerance, &self.position_range)
+            if self.index.sort_type == SortingEnum.by_mass:
+                fragment_list_binary_search(&self.index.bins[self.current_bin], self.query, self.error_tolerance, &self.position_range)
+            else:
+                self.position_range.start = 0
+                self.position_range.end = max(self.index.bins[self.current_bin].used, 1) - 1
+                i = 0
+                for i in range(self.index.bins[self.current_bin].used):
+                    if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
+                        break
+                self.position_range.start = i
             self.position = self.position_range.start
             if self.position < self.position_range.end:
                 break
@@ -214,7 +306,16 @@ cdef int fragment_index_search(fragment_index_t* self, double mass, double error
     iterator.position_range.end = 0
 
     fragment_bin = &self.bins[low_bin]
-    result = fragment_list_binary_search(fragment_bin, mass, error_tolerance, &iterator.position_range)
+    if self.sort_type == SortingEnum.by_mass:
+        result = fragment_list_binary_search(fragment_bin, mass, error_tolerance, &iterator.position_range)
+    else:
+        iterator.position_range.start = 0
+        iterator.position_range.end = max(fragment_bin.used, 1) - 1
+        i = 0
+        for i in range(fragment_bin.used):
+            if fabs(fragment_bin.v[i].mass - iterator.query) / iterator.query < iterator.error_tolerance:
+                break
+        iterator.position_range.start = i
     iterator.position = iterator.position_range.start
 
     # If the result set is empty, make the iterator think it is empty
@@ -285,6 +386,10 @@ cdef class FragmentList(object):
     def allocated(self):
         return self.fragments.size
 
+    @property
+    def sort_type(self):
+        return self.fragments.sort_type
+
     def __init__(self, *args, **kwargs):
         self._init_list()
 
@@ -334,8 +439,8 @@ cdef class FragmentList(object):
         if out == 1:
             raise MemoryError()
 
-    cpdef sort(self):
-        fragment_list_sort(self.fragments)
+    cpdef sort(self, SortingEnum sort_type=SortingEnum.by_mass):
+        fragment_list_sort(self.fragments, sort_type)
 
     cpdef interval_t search(self, double query, double error_tolerance=1e-5):
         cdef:
@@ -372,6 +477,10 @@ cdef class FragmentIndex(object):
     def max_fragment_size(self):
         return self.index.max_fragment_size
 
+    @property
+    def sort_type(self):
+        return self.index.sort_type
+
     def __init__(self, bins_per_dalton=10, max_fragment_size=3000):
         self._init_index(bins_per_dalton, max_fragment_size)
 
@@ -389,6 +498,7 @@ cdef class FragmentIndex(object):
         self.bins = list()
         for i in range(self.index.size):
             self.bins.append(FragmentList._create(&self.index.bins[i]))
+        self.parent_index = FragmentList._create(self.index.parent_index)
 
     def __dealloc__(self):
         if self.owned and self.index != NULL:
@@ -434,14 +544,35 @@ cdef class FragmentIndex(object):
             value = self.index.size - 1
         fragment_list_append(&self.index.bins[value], fragment_t(mass, series, parent_id))
 
-    cpdef sort(self):
-        fragment_index_sort(self.index)
+    cpdef add_parent(self, double mass, uint64_t parent_id):
+        cdef:
+            int result
+        result = fragment_index_add_parent(self.index, mass, parent_id)
+        if result == 2:
+            raise ValueError("Parents must be added in ascending mass order")
+        elif result == 1:
+            raise MemoryError()
+
+    cpdef sort(self, SortingEnum sort_type=SortingEnum.by_mass):
+        fragment_index_sort(self.index, sort_type)
 
     cpdef size_t count(self):
         total = 0
         for bin in self.bins:
             total += len(bin)
         return total
+
+    cpdef interval_t parents_for(self, double mass, double error_tolerance=1e-5):
+        cdef:
+            interval_t out
+        fragment_index_parents_for(self.index, mass, error_tolerance, &out)
+        return out
+
+    cpdef interval_t parents_for_range(self, double low, double high, double error_tolerance=1-5):
+        cdef:
+            interval_t out
+        fragment_index_parents_for_range(self.index, low, high, error_tolerance, &out)
+        return out
 
     cpdef FragmentIndexSearchIterator search(self, double mass, double error_tolerance=1e-5):
         cdef:

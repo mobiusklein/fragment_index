@@ -7,6 +7,7 @@ ctypedef np.uint8_t uint8_t
 
 
 cpdef enum SeriesEnum:
+    parent = 0
     b = 1
     y = 2
     c = 3
@@ -19,10 +20,19 @@ cdef struct fragment_t:
     uint64_t parent_id
 
 
+cpdef enum SortingEnum:
+    unsorted = 0
+    by_mass = 1
+    by_parent = 2
+
+
 cdef struct fragment_list_t:
     fragment_t* v
     size_t used
     size_t size
+    SortingEnum sort_type
+    float32_t min_mass
+    float32_t max_mass
 
 
 cdef struct interval_t:
@@ -32,9 +42,11 @@ cdef struct interval_t:
 
 cdef struct fragment_index_t:
     fragment_list_t* bins
+    fragment_list_t* parent_index
     size_t size
     int bins_per_dalton
     double max_fragment_size
+    SortingEnum sort_type
 
 
 cdef struct fragment_index_search_t:
@@ -53,11 +65,12 @@ cdef struct fragment_index_traverse_t:
     size_t current_bin
     size_t position
 
+
 # fragment_list_t methods
 cdef int init_fragment_list(fragment_list_t* self, size_t size) nogil
 cdef int free_fragment_list(fragment_list_t* self) nogil
 cdef int fragment_list_append(fragment_list_t* self, fragment_t fragment) nogil
-cdef void fragment_list_sort(fragment_list_t* self) nogil
+cdef void fragment_list_sort(fragment_list_t* self, SortingEnum sort_type) nogil
 cdef double fragment_list_lowest_mass(fragment_list_t* self) nogil
 cdef double fragment_list_highest_mass(fragment_list_t* self) nogil
 cdef int fragment_list_binary_search(fragment_list_t* self, double query, double error_tolerance, interval_t* out, size_t low_hint=*, size_t high_hint=*) nogil
@@ -67,7 +80,10 @@ cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=*, doub
 cdef int free_fragment_index(fragment_index_t* self) nogil
 cpdef size_t total_bins_for_mass(int bins_per_dalton, double max_fragment_size) nogil
 cdef size_t bin_for_mass(fragment_index_t* self, double mass) nogil
-cdef void fragment_index_sort(fragment_index_t* self) nogil
+cdef void fragment_index_sort(fragment_index_t* self, SortingEnum sort_type) nogil
+cdef int fragment_index_add_parent(fragment_index_t* self, double mass, uint64_t parent_id) nogil
+cdef int fragment_index_parents_for(fragment_index_t* self, double mass, double error_tolerance, interval_t* out) nogil
+cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, double high, double error_tolerance, interval_t* out) nogil
 
 # fragment_index_search_t methods
 cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil
@@ -81,7 +97,6 @@ cdef int fragment_index_traverse_next(fragment_index_traverse_t* self, fragment_
 cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double query, double error_tolerance=*) nogil
 
 
-
 cdef class FragmentList(object):
     cdef:
         fragment_list_t* fragments
@@ -93,7 +108,7 @@ cdef class FragmentList(object):
     cdef void _init_list(self)
     cpdef clear(self)
     cpdef append(self, float32_t mass, SeriesEnum series, uint64_t parent_id)
-    cpdef sort(self)
+    cpdef sort(self, SortingEnum sort_type=?)
     cpdef interval_t search(self, double query, double error_tolerance=*)
 
 
@@ -102,6 +117,7 @@ cdef class FragmentIndex(object):
         fragment_index_t* index
         public list bins
         public bint owned
+        public FragmentList parent_index
 
     @staticmethod
     cdef FragmentIndex _create(fragment_index_t* pointer)
@@ -110,8 +126,11 @@ cdef class FragmentIndex(object):
     cpdef clear(self, reinit=*)
     cpdef size_t bin_for(self, double mass)
     cpdef add(self, double mass, SeriesEnum series, uint64_t parent_id)
-    cpdef sort(self)
+    cpdef add_parent(self, double mass, uint64_t parent_id)
+    cpdef sort(self, SortingEnum sort_type=?)
     cpdef size_t count(self)
+    cpdef interval_t parents_for(self, double mass, double error_tolerance=*)
+    cpdef interval_t parents_for_range(self, double low, double high, double error_tolerance=*)
     cpdef FragmentIndexSearchIterator search(self, double mass, double error_tolerance=*)
     cpdef FragmentIndexTraverseIterator traverse(self)
 
