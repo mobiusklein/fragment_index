@@ -250,13 +250,15 @@ cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* f
         if self.index.sort_type == SortingEnum.by_mass:
             self.position += 1
         else:
+            # Otherwise we have to walk forward incrementally until we find the next valid position or the end of the bin/interval
             self.position += 1
             i = self.position
             for i in range(self.position, self.index.bins[self.current_bin].used):
                 if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
                     break
             self.position = i
-    if self.position > self.position_range.end:
+    # We reached the end of the interval, possibly the end of the bin
+    if self.position > self.position_range.end or self.position >= self.index.bins[self.current_bin].used:
         while self.current_bin <= self.high_bin:
             self.current_bin += 1
             # If the index was sorted by mass alone, just use binary search to find the query start-stop interval
@@ -369,19 +371,37 @@ cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double qu
     cdef:
         size_t i
         interval_t q_range
-    query = query - (query * error_tolerance)
+        double lower_bound
+    lower_bound = query - (query * error_tolerance)
     i = bin_for_mass(self.index, query)
     if i < 0:
         i = 0
     if i > 0:
-        if fragment_list_highest_mass(&self.index.bins[i - 1]) > query:
+        if fragment_list_highest_mass(&self.index.bins[i - 1]) > lower_bound:
             i -= 1
     self.current_bin = i
-    fragment_list_binary_search(&self.index.bins[i], query, error_tolerance, &q_range)
-    self.position = q_range.start
-    if q_range.start == q_range.end:
-        return 1
-    return 0
+    if self.index.sort_type == SortingEnum.by_mass:
+        fragment_list_binary_search(&self.index.bins[i], lower_bound, error_tolerance, &q_range)
+        self.position = q_range.start
+        if q_range.start == q_range.end:
+            return 1
+        return 0
+    else:
+        self.position = 0
+        while self.position < self.index.bins[self.current_bin].used:
+            if (self.index.bins[self.current_bin].v[self.position].mass < lower_bound):
+                self.position += 1
+            else:
+                break
+        if self.position == self.index.bins[self.current_bin].used:
+            self.position = 0
+            # If there's a next bin to go to, go to it
+            if self.current_bin < self.index.size - 1:
+                self.current_bin += 1
+            else:
+                # otherwise move the iterator position to the last position in the last bin
+                self.position = self.index.bins[self.index.size - 1].used - 1
+        return 0
 
 
 cdef class FragmentList(object):
