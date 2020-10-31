@@ -16,6 +16,14 @@ cdef double _round(double x) nogil:
 cdef double INF = float('inf')
 
 
+cdef bint interval_contains(interval_t* self, size_t i) nogil:
+    return self.start <= i <= self.end
+
+
+cdef bint interval_is_empty(interval_t* self) nogil:
+    return self.start == self.end
+
+
 cdef int compare_by_mass(const void * a, const void * b) nogil:
     if (<fragment_t*>a).mass < (<fragment_t*>b).mass:
         return -1
@@ -236,8 +244,9 @@ cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil:
 cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* fragment) nogil:
     cdef:
         size_t i
-    if self.position < self.position_range.end:
+    if self.position <= self.position_range.end:
         fragment[0] = self.index.bins[self.current_bin].v[self.position]
+        # If the index was sorted by mass, we're guaranteed to be in the next valid position
         if self.index.sort_type == SortingEnum.by_mass:
             self.position += 1
         else:
@@ -247,12 +256,14 @@ cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* f
                 if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
                     break
             self.position = i
-    if self.position == self.position_range.end:
+    if self.position > self.position_range.end:
         while self.current_bin <= self.high_bin:
             self.current_bin += 1
+            # If the index was sorted by mass alone, just use binary search to find the query start-stop interval
             if self.index.sort_type == SortingEnum.by_mass:
                 fragment_list_binary_search(&self.index.bins[self.current_bin], self.query, self.error_tolerance, &self.position_range)
             else:
+                # Otherwise we have to traverse the whole bin, but we can at least advance to the first good position
                 self.position_range.start = 0
                 self.position_range.end = max(self.index.bins[self.current_bin].used, 1) - 1
                 i = 0

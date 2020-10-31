@@ -12,6 +12,8 @@ cpdef enum SeriesEnum:
     y = 2
     c = 3
     z = 4
+    pY = 5
+
 
 
 cdef struct fragment_t:
@@ -35,6 +37,7 @@ cdef struct fragment_list_t:
     float32_t max_mass
 
 
+# represent an interval [a, b], inclusive on both extrema.
 cdef struct interval_t:
     size_t start
     size_t end
@@ -58,13 +61,19 @@ cdef struct fragment_index_search_t:
     size_t current_bin
     interval_t position_range
     size_t position
+    interval_t parent_id_interval
 
 
 cdef struct fragment_index_traverse_t:
     fragment_index_t* index
     size_t current_bin
     size_t position
+    interval_t parent_id_interval
 
+
+# interval_t methods
+cdef bint interval_contains(interval_t* self, size_t i) nogil
+cdef bint interval_is_empty(interval_t* self) nogil
 
 # fragment_list_t methods
 cdef int init_fragment_list(fragment_list_t* self, size_t size) nogil
