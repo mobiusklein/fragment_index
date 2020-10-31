@@ -18,7 +18,7 @@ cpdef enum SeriesEnum:
 
 cdef struct fragment_t:
     float32_t mass
-    SeriesEnum series
+    uint8_t series
     uint64_t parent_id
 
 
@@ -32,7 +32,7 @@ cdef struct fragment_list_t:
     fragment_t* v
     size_t used
     size_t size
-    SortingEnum sort_type
+    uint8_t sort_type
     float32_t min_mass
     float32_t max_mass
 
@@ -49,7 +49,7 @@ cdef struct fragment_index_t:
     size_t size
     int bins_per_dalton
     double max_fragment_size
-    SortingEnum sort_type
+    uint8_t sort_type
 
 
 cdef struct fragment_index_search_t:
