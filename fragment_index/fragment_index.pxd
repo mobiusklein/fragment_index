@@ -74,6 +74,7 @@ cdef struct fragment_index_traverse_t:
 # interval_t methods
 cdef bint interval_contains(interval_t* self, size_t i) nogil
 cdef bint interval_is_empty(interval_t* self) nogil
+cdef bint interval_eq(interval_t* self, interval_t* other) nogil
 
 # fragment_list_t methods
 cdef int init_fragment_list(fragment_list_t* self, size_t size) nogil
@@ -82,7 +83,8 @@ cdef int fragment_list_append(fragment_list_t* self, fragment_t fragment) nogil
 cdef void fragment_list_sort(fragment_list_t* self, SortingEnum sort_type) nogil
 cdef double fragment_list_lowest_mass(fragment_list_t* self) nogil
 cdef double fragment_list_highest_mass(fragment_list_t* self) nogil
-cdef int fragment_list_binary_search(fragment_list_t* self, double query, double error_tolerance, interval_t* out, size_t low_hint=*, size_t high_hint=*) nogil
+cdef int fragment_list_binary_search(fragment_list_t* self, double query, double error_tolerance,
+                                     interval_t* out, size_t low_hint=*, size_t high_hint=*) nogil
 
 # fragment_index_t methods
 cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=*, double max_fragment_size=*) nogil
@@ -97,14 +99,16 @@ cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, do
 # fragment_index_search_t methods
 cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil
 cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* fragment) nogil
-cdef int fragment_index_search(fragment_index_t* self, double mass, double error_tolerance, fragment_index_search_t* iterator) nogil
+cdef int fragment_index_search(fragment_index_t* self, double mass, double error_tolerance,
+                               fragment_index_search_t* iterator, interval_t parent_id_interval=*) nogil
+cdef int fragment_index_search_set_parent_interval(fragment_index_search_t* self, interval_t parent_id_interval) nogil
 
 # fragment_index_traverse_t methods
-cdef int fragment_index_traverse(fragment_index_t* self, fragment_index_traverse_t* iterator) nogil
+cdef int fragment_index_traverse(fragment_index_t* self, fragment_index_traverse_t* iterator, interval_t parent_id_interval=*) nogil
 cdef bint fragment_index_traverse_has_next(fragment_index_traverse_t* self) nogil
 cdef int fragment_index_traverse_next(fragment_index_traverse_t* self, fragment_t* fragment) nogil
 cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double query, double error_tolerance=*) nogil
-
+# cdef int fragment_index_traverse_set_parent_interval(fragment_index_traverse_t* self, interval_t parent_id_interval) nogil
 
 cdef class FragmentList(object):
     cdef:
@@ -151,7 +155,7 @@ cdef class FragmentIndexSearchIterator(object):
 
     @staticmethod
     cdef FragmentIndexSearchIterator _create(fragment_index_search_t* iterator)
-
+    cpdef bint set_parent_id_range(self, start, end)
 
 cdef class FragmentIndexTraverseIterator(object):
     cdef:

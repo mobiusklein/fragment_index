@@ -24,6 +24,22 @@ cdef bint interval_is_empty(interval_t* self) nogil:
     return self.start == self.end
 
 
+cdef bint interval_eq(interval_t* self, interval_t* other) nogil:
+    if other == NULL:
+        return self == NULL
+    return self.start == other.start and self.end == other.end
+
+
+cdef interval_t OPEN_INTERVAL
+OPEN_INTERVAL.start = 0
+OPEN_INTERVAL.end = -1 # unsigned wrap-around to largest value here
+
+
+cdef interval_t EMPTY_INTERVAL
+EMPTY_INTERVAL.start = 0
+EMPTY_INTERVAL.end = 0
+
+
 cdef int compare_by_mass(const void * a, const void * b) nogil:
     if (<fragment_t*>a).mass < (<fragment_t*>b).mass:
         return -1
@@ -241,48 +257,136 @@ cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil:
     return False
 
 
-cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* fragment) nogil:
+@cython.cdivision(True)
+cdef int fragment_index_search_update_bin(fragment_index_search_t* self) nogil:
     cdef:
         size_t i
-    if self.position <= self.position_range.end:
-        fragment[0] = self.index.bins[self.current_bin].v[self.position]
-        # If the index was sorted by mass, we're guaranteed to be in the next valid position
+
+    while self.current_bin <= self.high_bin:
+        self.current_bin += 1
+        # If the index was sorted by mass alone, just use binary search to find the query start-stop interval
         if self.index.sort_type == SortingEnum.by_mass:
-            self.position += 1
-        else:
-            # Otherwise we have to walk forward incrementally until we find the next valid position or the end of the bin/interval
-            self.position += 1
-            i = self.position
-            for i in range(self.position, self.index.bins[self.current_bin].used):
-                if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
-                    break
-            self.position = i
-    # We reached the end of the interval, possibly the end of the bin
-    if self.position > self.position_range.end or self.position >= self.index.bins[self.current_bin].used:
-        while self.current_bin <= self.high_bin:
-            self.current_bin += 1
-            # If the index was sorted by mass alone, just use binary search to find the query start-stop interval
-            if self.index.sort_type == SortingEnum.by_mass:
-                fragment_list_binary_search(&self.index.bins[self.current_bin], self.query, self.error_tolerance, &self.position_range)
-            else:
-                # Otherwise we have to traverse the whole bin, but we can at least advance to the first good position
-                self.position_range.start = 0
-                self.position_range.end = max(self.index.bins[self.current_bin].used, 1) - 1
-                i = 0
-                for i in range(self.index.bins[self.current_bin].used):
-                    if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
-                        break
-                self.position_range.start = i
+            fragment_list_binary_search(&self.index.bins[self.current_bin], self.query, self.error_tolerance, &self.position_range)
             self.position = self.position_range.start
-            if self.position < self.position_range.end:
-                break
+            for i in range(self.position, min(self.position_range.end + 1, self.index.bins[self.current_bin].used)):
+                if not interval_contains(&self.parent_id_interval, self.index.bins[self.current_bin].v[i].parent_id):
+                    continue
+                else:
+                    self.position_range.start = i
+                    break
+            else:
+                self.position_range.start = self.index.bins[self.current_bin].used
+        else:
+            # Otherwise we have to traverse the whole bin, but we can at least advance to the first good position
+            self.position_range.start = 0
+            self.position_range.end = max(self.index.bins[self.current_bin].used, 1) - 1
+            i = 0
+            for i in range(self.index.bins[self.current_bin].used):
+                if not interval_contains(&self.parent_id_interval, self.index.bins[self.current_bin].v[i].parent_id):
+                    continue
+                if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
+                    self.position_range.start = i
+                    break
+            else:
+                self.position_range.start = self.index.bins[self.current_bin].used
+
+        self.position = self.position_range.start
+        if self.position < self.position_range.end:
+            break
     return 0
 
 
-cdef int fragment_index_search(fragment_index_t* self, double mass, double error_tolerance, fragment_index_search_t* iterator) nogil:
+@cython.cdivision(True)
+cdef int fragment_index_search_advance(fragment_index_search_t* self) nogil:
+    cdef:
+        size_t i
+        fragment_t fragment
+
+    # If the index was sorted by mass, we're guaranteed to be in the next valid position
+    if self.index.sort_type == SortingEnum.by_mass:
+        self.position += 1
+        fragment_index_search_peek(self, &fragment)
+        while not interval_contains(&self.parent_id_interval, fragment.parent_id) and self.position < self.index.bins[self.current_bin].used:
+            self.position += 1
+    else:
+        # Otherwise we have to walk forward incrementally until we find the next
+        # valid position or the end of the bin/interval
+        self.position += 1
+        i = self.position
+        for i in range(self.position, self.index.bins[self.current_bin].used):
+            if not interval_contains(&self.parent_id_interval, self.index.bins[self.current_bin].v[i].parent_id):
+                continue
+            if fabs(self.index.bins[self.current_bin].v[i].mass - self.query) / self.query < self.error_tolerance:
+                self.position = i
+                break
+        else:
+            self.position = self.index.bins[self.current_bin].used
+    return 0
+
+
+@cython.cdivision(True)
+cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* fragment) nogil:
+    cdef:
+        size_t i
+
+    if self.position <= self.position_range.end:
+        fragment[0] = self.index.bins[self.current_bin].v[self.position]
+        fragment_index_search_advance(self)
+
+    # We reached the end of the interval, possibly the end of the bin
+    if self.position > self.position_range.end or self.position >= self.index.bins[self.current_bin].used:
+        fragment_index_search_update_bin(self)
+    return 0
+
+
+cdef int fragment_index_search_peek(fragment_index_search_t* self, fragment_t* fragment) nogil:
+    fragment[0] = self.index.bins[self.current_bin].v[self.position]
+    return 0
+
+
+@cython.cdivision(True)
+cdef int fragment_index_search_init_interval(fragment_index_search_t* self) nogil:
+    cdef:
+        fragment_list_t* fragment_bin
+        size_t i
+        fragment_t fragment
+
+    fragment_bin = &self.index.bins[self.current_bin]
+
+    self.position_range.start = 0
+    self.position_range.end = max(fragment_bin.used, 1) - 1
+    self.position = 0
+
+    if self.index.sort_type == SortingEnum.by_mass:
+        result = fragment_list_binary_search(fragment_bin, self.query, self.error_tolerance, &self.position_range)
+        self.position = self.position_range.start
+        fragment_index_search_peek(self, &fragment)
+        while not interval_contains(&self.parent_id_interval, fragment.parent_id) and self.position < self.index.bins[self.current_bin].used:
+            self.position += 1
+    else:
+        i = 0
+        for i in range(fragment_bin.used):
+            if not interval_contains(&self.parent_id_interval, self.index.bins[self.current_bin].v[i].parent_id):
+                continue
+            if fabs(fragment_bin.v[i].mass - self.query) / self.query < self.error_tolerance:
+                self.position_range.start = i
+                break
+        else:
+            self.position_range.start = self.position_range.end
+
+    self.position = self.position_range.start
+
+    # If the result set is empty, make the index think it is empty
+    if self.position == self.position_range.end:
+        self.current_bin = self.high_bin
+    return 0
+
+
+cdef int fragment_index_search(fragment_index_t* self, double mass, double error_tolerance,
+                               fragment_index_search_t* iterator, interval_t parent_id_interval=OPEN_INTERVAL) nogil:
     cdef:
         int result
-        size_t low_bin, high_bin
+        size_t low_bin, high_bin, i
         double low, high
         fragment_list_t* fragment_bin
         interval_t bin_range
@@ -317,30 +421,26 @@ cdef int fragment_index_search(fragment_index_t* self, double mass, double error
     iterator.high_bin = high_bin
     iterator.position_range.start = 0
     iterator.position_range.end = 0
+    iterator.parent_id_interval = parent_id_interval
 
-    fragment_bin = &self.bins[low_bin]
-    if self.sort_type == SortingEnum.by_mass:
-        result = fragment_list_binary_search(fragment_bin, mass, error_tolerance, &iterator.position_range)
-    else:
-        iterator.position_range.start = 0
-        iterator.position_range.end = max(fragment_bin.used, 1) - 1
-        i = 0
-        for i in range(fragment_bin.used):
-            if fabs(fragment_bin.v[i].mass - iterator.query) / iterator.query < iterator.error_tolerance:
-                break
-        iterator.position_range.start = i
-    iterator.position = iterator.position_range.start
-
-    # If the result set is empty, make the iterator think it is empty
-    if iterator.position == iterator.position_range.end:
-        iterator.current_bin = iterator.high_bin
+    fragment_index_search_init_interval(iterator)
     return 0
 
 
-cdef int fragment_index_traverse(fragment_index_t* self, fragment_index_traverse_t* iterator) nogil:
+cdef int fragment_index_search_set_parent_interval(fragment_index_search_t* self, interval_t parent_id_interval) nogil:
+    cdef:
+        fragment_t fragment
+    self.parent_id_interval = parent_id_interval
+    fragment_index_search_peek(self, &fragment)
+    if not interval_contains(&self.parent_id_interval, fragment.parent_id):
+        fragment_index_search_next(self, &fragment)
+    return 0
+
+cdef int fragment_index_traverse(fragment_index_t* self, fragment_index_traverse_t* iterator, interval_t parent_id_interval=OPEN_INTERVAL) nogil:
     iterator.index = self
     iterator.current_bin = 0
     iterator.position = 0
+    iterator.parent_id_interval = parent_id_interval
     while self.bins[iterator.current_bin].used == 0 and iterator.current_bin < self.size:
         iterator.current_bin += 1
     return 0
@@ -662,6 +762,14 @@ cdef class FragmentIndexSearchIterator(object):
     def _allocate(self):
         self.iterator = <fragment_index_search_t*>malloc(sizeof(fragment_index_search_t))
         self.owned = True
+
+    cpdef bint set_parent_id_range(self, start, end):
+        cdef:
+            interval_t interval
+        interval.start = start
+        interval.end = end
+        fragment_index_search_set_parent_interval(self.iterator, interval)
+        return 0
 
     def __dealloc__(self):
         if self.owned:
