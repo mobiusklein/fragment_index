@@ -110,6 +110,14 @@ cdef int fragment_index_traverse_next(fragment_index_traverse_t* self, fragment_
 cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double query, double error_tolerance=*) nogil
 # cdef int fragment_index_traverse_set_parent_interval(fragment_index_traverse_t* self, interval_t parent_id_interval) nogil
 
+
+cdef class Fragment(object):
+    cdef:
+        fragment_t fragment
+
+    @staticmethod
+    cdef Fragment _create(fragment_t* fragment)
+
 cdef class FragmentList(object):
     cdef:
         fragment_list_t* fragments
@@ -156,6 +164,7 @@ cdef class FragmentIndexSearchIterator(object):
     @staticmethod
     cdef FragmentIndexSearchIterator _create(fragment_index_search_t* iterator)
     cpdef bint set_parent_id_range(self, start, end)
+    cpdef list all(self)
 
 cdef class FragmentIndexTraverseIterator(object):
     cdef:

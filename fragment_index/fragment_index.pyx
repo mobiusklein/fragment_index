@@ -780,6 +780,20 @@ cdef class FragmentIndexSearchIterator(object):
         fragment_index_search_set_parent_interval(self.iterator, interval)
         return 0
 
+    cpdef list all(self):
+        cdef:
+            list result
+            int code
+            fragment_t f
+        result = []
+
+        while fragment_index_search_has_next(self.iterator):
+            code = fragment_index_search_next(self.iterator, &f)
+            if code != 0:
+                break
+            result.append(f)
+        return result
+
     def __dealloc__(self):
         if self.owned:
             free(self.iterator)
@@ -844,3 +858,39 @@ cdef class FragmentIndexTraverseIterator(object):
 
     cpdef int seek(self, double query, double error_tolerance=1e-5):
         return fragment_index_traverse_seek(self.iterator, query, error_tolerance)
+
+
+@cython.final
+@cython.freelist(10000)
+cdef class Fragment(object):
+    @staticmethod
+    cdef Fragment _create(fragment_t* fragment):
+        cdef Fragment self = Fragment.__new__(Fragment)
+        self.fragment = fragment[0]
+
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    @property
+    def mass(self):
+        return self.fragment.mass
+
+    @property
+    def series(self):
+        return  SeriesEnum[self.fragment.series]
+
+    @property
+    def parent_id(self):
+        return self.fragment.parent_id
+
+    def __repr__(self):
+        return "{self.__class__.__name__}({self.mass}, {self.series}, {self.parent_id})".format(self=self)
+
+    def __getitem__(self, key):
+        if key == 'mass':
+            return self.mass
+        if key == 'series':
+            return self.series
+        if key == 'parent_id':
+            return self.parent_id
+        raise KeyError(key)
