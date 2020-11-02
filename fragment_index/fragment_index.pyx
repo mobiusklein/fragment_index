@@ -454,16 +454,24 @@ cdef bint fragment_index_traverse_has_next(fragment_index_traverse_t* self) nogi
     return False
 
 
+cdef int fragment_index_traverse_advance(fragment_index_traverse_t* self) nogil:
+    self.position += 1
+
+
+cdef int fragment_index_traverse_update_bin(fragment_index_traverse_t* self) nogil:
+    while self.current_bin < self.index.size:
+        self.current_bin += 1
+        self.position = 0
+        if self.position < self.index.bins[self.current_bin].used:
+            break
+
+
 cdef int fragment_index_traverse_next(fragment_index_traverse_t* self, fragment_t* fragment) nogil:
     if self.position < self.index.bins[self.current_bin].used:
         fragment[0] = self.index.bins[self.current_bin].v[self.position]
-        self.position += 1
+        fragment_index_traverse_advance(self)
     if self.position == self.index.bins[self.current_bin].used:
-        while self.current_bin < self.index.size:
-            self.current_bin += 1
-            self.position = 0
-            if self.position < self.index.bins[self.current_bin].used:
-                break
+        fragment_index_traverse_update_bin(self)
     return 0
 
 
@@ -484,7 +492,8 @@ cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double qu
         fragment_list_binary_search(&self.index.bins[i], lower_bound, error_tolerance, &q_range)
         self.position = q_range.start
         if q_range.start == q_range.end:
-            return 1
+            fragment_index_traverse_update_bin(self)
+            self.position = 0
         return 0
     else:
         self.position = 0
@@ -497,7 +506,7 @@ cdef int fragment_index_traverse_seek(fragment_index_traverse_t* self, double qu
             self.position = 0
             # If there's a next bin to go to, go to it
             if self.current_bin < self.index.size - 1:
-                self.current_bin += 1
+                fragment_index_traverse_update_bin(self)
             else:
                 # otherwise move the iterator position to the last position in the last bin
                 self.position = self.index.bins[self.index.size - 1].used - 1
