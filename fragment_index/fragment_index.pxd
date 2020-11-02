@@ -164,7 +164,7 @@ cdef class FragmentIndexSearchIterator(object):
     @staticmethod
     cdef FragmentIndexSearchIterator _create(fragment_index_search_t* iterator)
     cpdef bint set_parent_id_range(self, start, end)
-    cpdef list all(self)
+    cpdef FragmentList all(self)
 
 cdef class FragmentIndexTraverseIterator(object):
     cdef:

@@ -780,18 +780,27 @@ cdef class FragmentIndexSearchIterator(object):
         fragment_index_search_set_parent_interval(self.iterator, interval)
         return 0
 
-    cpdef list all(self):
+    cpdef FragmentList all(self):
         cdef:
-            list result
             int code
             fragment_t f
-        result = []
-
-        while fragment_index_search_has_next(self.iterator):
-            code = fragment_index_search_next(self.iterator, &f)
-            if code != 0:
-                break
-            result.append(f)
+            fragment_list_t* acc
+            FragmentList result
+        acc = <fragment_list_t*>malloc(sizeof(fragment_list_t))
+        code = init_fragment_list(acc, 32)
+        if code != 0:
+            raise MemoryError("Cannot initialize fragment list")
+        with nogil:
+            while fragment_index_search_has_next(self.iterator):
+                code = fragment_index_search_next(self.iterator, &f)
+                if code != 0:
+                    break
+                code = fragment_list_append(acc, f)
+                if code != 0:
+                    with gil:
+                        raise MemoryError("Cannot append to fragment list")
+        result = FragmentList._create(acc)
+        result.owned = True
         return result
 
     def __dealloc__(self):
