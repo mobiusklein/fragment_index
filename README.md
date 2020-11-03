@@ -27,9 +27,9 @@ for j, peptide in enumerate(sorted(peptide_iterator, key=mass.fast_mass)):
     index.add_parent(peptide_mass, j)
     for i in range(1, len(peptide) - 1):
         m = mass.fast_mass(peptide[:i], ion_type='b')
-        index.add(m, fragment_index.SeriesEnum.b, j)
+        index.add(m, fragment_index.SeriesEnum.b, j, i)
         m = mass.fast_mass(peptide[i:], ion_type='y')
-        index.add(m, fragment_index.SeriesEnum.y, j)
+        index.add(m, fragment_index.SeriesEnum.y, j, len(peptide) - i)
 
 index.sort(fragment_index.SortingEnum.by_parent)
 

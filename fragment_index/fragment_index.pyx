@@ -2,6 +2,7 @@
 
 cimport cython
 from libc.stdlib cimport malloc, realloc, calloc, free, qsort
+from libc.string cimport memcpy
 from libc.math cimport floor, fabs
 
 cdef extern from * nogil:
@@ -38,6 +39,9 @@ OPEN_INTERVAL.end = -1 # unsigned wrap-around to largest value here
 cdef interval_t EMPTY_INTERVAL
 EMPTY_INTERVAL.start = 0
 EMPTY_INTERVAL.end = 0
+
+
+fragment_t_size = sizeof(fragment_t)
 
 
 cdef int compare_by_mass(const void * a, const void * b) nogil:
@@ -170,6 +174,22 @@ cdef int fragment_list_binary_search(fragment_list_t* self, double query, double
     return 1
 
 
+cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer) nogil:
+    cdef:
+        char* byte_buffer
+        size_t i, n
+
+    n = sizeof(fragment_t) * self.used
+    byte_buffer = <char*>malloc(sizeof(char) * n + 1)
+    if byte_buffer == NULL:
+        return 1
+    memcpy(<void*>byte_buffer, <void*>self.v, n)
+    byte_buffer[n + 1] = '\0'
+    output_buffer[0] = byte_buffer
+    printf("%s\n", byte_buffer)
+    return 0
+
+
 cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=1000, double max_fragment_size=3000) nogil:
     cdef:
         size_t total_bins, i
@@ -230,8 +250,9 @@ cdef int fragment_index_add_parent(fragment_index_t* self, double mass, uint64_t
     if self.parent_index.used > 0 and (self.parent_index.v[self.parent_index.used - 1].mass - mass) > 1e-3:
         return 2
     f.mass = mass
-    f.series = SeriesEnum.parent
     f.parent_id = parent_id
+    f.series = SeriesEnum.parent
+    f.ordinal = 0
     return fragment_list_append(self.parent_index, f)
 
 
@@ -430,10 +451,14 @@ cdef int fragment_index_search(fragment_index_t* self, double mass, double error
 cdef int fragment_index_search_set_parent_interval(fragment_index_search_t* self, interval_t parent_id_interval) nogil:
     cdef:
         fragment_t fragment
+        int code
     self.parent_id_interval = parent_id_interval
-    fragment_index_search_peek(self, &fragment)
-    if not interval_contains(&self.parent_id_interval, fragment.parent_id):
-        fragment_index_search_next(self, &fragment)
+    if fragment_index_search_has_next(self):
+        code = fragment_index_search_peek(self, &fragment)
+        if code != 0:
+            return 0
+        if not interval_contains(&self.parent_id_interval, fragment.parent_id):
+            fragment_index_search_next(self, &fragment)
     return 0
 
 cdef int fragment_index_traverse(fragment_index_t* self, fragment_index_traverse_t* iterator, interval_t parent_id_interval=OPEN_INTERVAL) nogil:
@@ -573,8 +598,8 @@ cdef class FragmentList(object):
     def __repr__(self):
         return "{self.__class__.__name__}({size})".format(self=self, size=len(self))
 
-    cpdef append(self, float32_t mass, SeriesEnum series, uint64_t parent_id):
-        cdef fragment_t fragment = fragment_t(mass, series, parent_id)
+    cpdef append(self, float32_t mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=0):
+        cdef fragment_t fragment = fragment_t(mass, parent_id, series, ordinal)
         out = fragment_list_append(self.fragments, fragment)
         if out == 1:
             raise MemoryError()
@@ -597,6 +622,19 @@ cdef class FragmentList(object):
     @property
     def highest_mass(self):
         return fragment_list_highest_mass(self.fragments)
+
+    cpdef bytearray to_bytes(self):
+        cdef:
+            char* buff
+            int code
+            bytearray out
+        code = fragment_list_to_bytes(self.fragments, &buff)
+        if code == 1:
+            raise MemoryError()
+        out = bytearray()
+        out[:] = buff
+        free(buff)
+        return out
 
 
 cdef class FragmentIndex(object):
@@ -672,7 +710,7 @@ cdef class FragmentIndex(object):
     cpdef size_t bin_for(self, double mass):
         return bin_for_mass(self.index, mass)
 
-    cpdef add(self, double mass, SeriesEnum series, uint64_t parent_id):
+    cpdef add(self, double mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=0):
         if mass > self.index.max_fragment_size:
             return
         if mass < 0:
@@ -682,9 +720,9 @@ cdef class FragmentIndex(object):
         # At this point it must be within the maximum size
         if value >= self.index.size:
             value = self.index.size - 1
-        fragment_list_append(&self.index.bins[value], fragment_t(mass, series, parent_id))
+        fragment_list_append(&self.index.bins[value], fragment_t(mass, parent_id, series, ordinal))
 
-    cpdef add_parent(self, double mass, uint64_t parent_id):
+    cpdef add_parent(self, double mass, uint32_t parent_id):
         cdef:
             int result
         result = fragment_index_add_parent(self.index, mass, parent_id)

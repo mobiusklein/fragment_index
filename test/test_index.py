@@ -23,9 +23,9 @@ def test_index():
         index.add_parent(peptide_mass, j)
         for i in range(1, len(peptide) - 1):
             m = mass.fast_mass(peptide[:i], ion_type='b')
-            index.add(m, SeriesEnum.b, j)
+            index.add(m, SeriesEnum.b, j, i)
             m = mass.fast_mass(peptide[i:], ion_type='y')
-            index.add(m, SeriesEnum.y, j)
+            index.add(m, SeriesEnum.y, j, len(peptide) - i)
 
     index.sort(SortingEnum.by_parent)
     assert index.count() == 197755

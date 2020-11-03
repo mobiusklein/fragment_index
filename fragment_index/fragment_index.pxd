@@ -4,6 +4,7 @@ ctypedef np.uint64_t uint64_t
 ctypedef np.uint32_t uint32_t
 ctypedef np.float32_t float32_t
 ctypedef np.uint8_t uint8_t
+ctypedef np.uint16_t uint16_t
 
 
 cpdef enum SeriesEnum:
@@ -18,8 +19,9 @@ cpdef enum SeriesEnum:
 
 cdef struct fragment_t:
     float32_t mass
+    uint32_t parent_id
     uint8_t series
-    uint64_t parent_id
+    uint16_t ordinal
 
 
 cpdef enum SortingEnum:
@@ -85,6 +87,7 @@ cdef double fragment_list_lowest_mass(fragment_list_t* self) nogil
 cdef double fragment_list_highest_mass(fragment_list_t* self) nogil
 cdef int fragment_list_binary_search(fragment_list_t* self, double query, double error_tolerance,
                                      interval_t* out, size_t low_hint=*, size_t high_hint=*) nogil
+cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer) nogil
 
 # fragment_index_t methods
 cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=*, double max_fragment_size=*) nogil
@@ -128,9 +131,10 @@ cdef class FragmentList(object):
 
     cdef void _init_list(self)
     cpdef clear(self)
-    cpdef append(self, float32_t mass, SeriesEnum series, uint64_t parent_id)
+    cpdef append(self, float32_t mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=*)
     cpdef sort(self, SortingEnum sort_type=?)
     cpdef interval_t search(self, double query, double error_tolerance=*)
+    cpdef bytearray to_bytes(self)
 
 
 cdef class FragmentIndex(object):
@@ -146,8 +150,8 @@ cdef class FragmentIndex(object):
     cpdef _wrap_bins(self)
     cpdef clear(self, reinit=*)
     cpdef size_t bin_for(self, double mass)
-    cpdef add(self, double mass, SeriesEnum series, uint64_t parent_id)
-    cpdef add_parent(self, double mass, uint64_t parent_id)
+    cpdef add(self, double mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=*)
+    cpdef add_parent(self, double mass, uint32_t parent_id)
     cpdef sort(self, SortingEnum sort_type=?)
     cpdef size_t count(self)
     cpdef interval_t parents_for(self, double mass, double error_tolerance=*)
