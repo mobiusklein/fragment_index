@@ -30,10 +30,10 @@ def test_index():
     index.sort(SortingEnum.by_parent)
     assert index.count() == 197755
     assert index.bin_for(113.084) == 1131
-    assert index.parents_for_range(500, 1200) == {"end": 5796, "start": 2590}
+    assert index.parents_for_range(500, 1200) == {"end": 5797, "start": 2590}
 
     search = search = index.search(113.084)
-    search.set_parent_id_range(**{"end": 5796, "start": 2590})
+    search.set_parent_id_range(**{"end": 5797, "start": 2590})
     found = list(search)
     assert len(found) == 569
     assert found[-1]['parent_id'] == 5785

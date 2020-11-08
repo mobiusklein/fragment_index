@@ -2,6 +2,7 @@ import itertools
 from pyteomics import mass, parser
 import fragment_index
 
+from pyteomics import mass as masslib
 # Ten bins per dalton, maximum fragment mass of 3000.0
 index = fragment_index.FragmentIndex(10, 3000.0)
 
@@ -20,7 +21,7 @@ peptide_iterator = itertools.chain.from_iterable(parser.cleave(
 # ascending mass order.
 for j, peptide in enumerate(sorted(peptide_iterator, key=mass.fast_mass)):
     peptide_mass = mass.fast_mass(peptide)
-    print(peptide, peptide_mass)
+    print(peptide, peptide_mass, j)
     index.add_parent(peptide_mass, j)
     for i in range(1, len(peptide) - 1):
         m = mass.fast_mass(peptide[:i], ion_type='b')
@@ -53,7 +54,23 @@ iterator = index.search(37.0320, 1e-5)
 for f in iterator:
     print(f)
 
-fl = index[index.bin_for(57.021)]
-bin_dat = fl.to_bytes()
-print(bin_dat)
-print(fragment_index.FragmentList.from_bytes(bin_dat))
+# fl = index[index.bin_for(57.021)]
+# bin_dat = fl.to_bytes()
+# print(bin_dat)
+# print(fragment_index.FragmentList.from_bytes(bin_dat))
+
+peptide = "SDVMYTDWK"
+pl = fragment_index.PeakList()
+for i in range(1, len(peptide) - 1):
+    pl.append(masslib.fast_mass(peptide[i:], ion_type='y'), i * 100, 1)
+
+precursor_mass = masslib.fast_mass(peptide)
+matches = fragment_index.search_index(index, pl, precursor_mass, -2, 300)
+print(matches)
+# parent_interval = index.parents_for_range(precursor_mass - 2, precursor_mass + 300)
+# print(parent_interval)
+
+# for peak in pl:
+#     print(peak['mass'])
+#     it = index.search(peak['mass'])
+#     print(it.next())

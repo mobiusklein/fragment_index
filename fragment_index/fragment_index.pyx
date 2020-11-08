@@ -20,7 +20,7 @@ cdef double INF = float('inf')
 
 
 cdef bint interval_contains(interval_t* self, size_t i) nogil:
-    return self.start <= i <= self.end
+    return self.start <= i < self.end
 
 
 cdef bint interval_is_empty(interval_t* self) nogil:
@@ -167,7 +167,7 @@ cdef int fragment_list_binary_search(fragment_list_t* self, double query, double
                 if fabs(x - query) / query > error_tolerance:
                     break
                 i += 1
-            out.end = i
+            out.end = min(i + 1, self.used)
             return 0
         elif err > 0:
             hi = mid
@@ -342,7 +342,7 @@ cdef int fragment_index_search_update_bin(fragment_index_search_t* self) nogil:
         else:
             # Otherwise we have to traverse the whole bin, but we can at least advance to the first good position
             self.position_range.start = 0
-            self.position_range.end = max(self.index.bins[self.current_bin].used, 1) - 1
+            self.position_range.end = self.index.bins[self.current_bin].used
             i = 0
             for i in range(self.index.bins[self.current_bin].used):
                 if not interval_contains(&self.parent_id_interval, self.index.bins[self.current_bin].v[i].parent_id):
@@ -392,7 +392,7 @@ cdef int fragment_index_search_next(fragment_index_search_t* self, fragment_t* f
     cdef:
         size_t i
 
-    if self.position <= self.position_range.end:
+    if self.position < self.position_range.end:
         fragment[0] = self.index.bins[self.current_bin].v[self.position]
         fragment_index_search_advance(self)
 
@@ -417,9 +417,9 @@ cdef int fragment_index_search_init_interval(fragment_index_search_t* self) nogi
     fragment_bin = &self.index.bins[self.current_bin]
 
     self.position_range.start = 0
-    self.position_range.end = max(fragment_bin.used, 1) - 1
+    self.position_range.end = fragment_bin.used
     self.position = 0
-
+    # printf("Investigating current bin %d with size %d\n", self.current_bin, fragment_bin.used)
     if self.index.sort_type == SortingEnum.by_mass:
         result = fragment_list_binary_search(fragment_bin, self.query, self.error_tolerance, &self.position_range)
         self.position = self.position_range.start
@@ -430,8 +430,11 @@ cdef int fragment_index_search_init_interval(fragment_index_search_t* self) nogi
         i = 0
         for i in range(fragment_bin.used):
             if not interval_contains(&self.parent_id_interval, self.index.bins[self.current_bin].v[i].parent_id):
+                # printf("Skipping %d, not in [%d, %d]\n",
+                #        self.index.bins[self.current_bin].v[i].parent_id, self.parent_id_interval.start, self.parent_id_interval.end)
                 continue
             if fabs(fragment_bin.v[i].mass - self.query) / self.query < self.error_tolerance:
+                # printf("Found starting mass match at %d\n", i)
                 self.position_range.start = i
                 break
         else:
@@ -441,7 +444,10 @@ cdef int fragment_index_search_init_interval(fragment_index_search_t* self) nogi
 
     # If the result set is empty, make the index think it is empty
     if self.position == self.position_range.end:
-        self.current_bin = self.high_bin
+        if self.current_bin != self.high_bin:
+            self.current_bin += 1
+            return fragment_index_search_init_interval(self)
+        return 1
     return 0
 
 

@@ -39,7 +39,6 @@ cdef struct fragment_list_t:
     float32_t max_mass
 
 
-# represent an interval [a, b], inclusive on both extrema.
 cdef struct interval_t:
     size_t start
     size_t end
