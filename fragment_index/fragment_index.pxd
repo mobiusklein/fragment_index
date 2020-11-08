@@ -87,7 +87,8 @@ cdef double fragment_list_lowest_mass(fragment_list_t* self) nogil
 cdef double fragment_list_highest_mass(fragment_list_t* self) nogil
 cdef int fragment_list_binary_search(fragment_list_t* self, double query, double error_tolerance,
                                      interval_t* out, size_t low_hint=*, size_t high_hint=*) nogil
-cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer) nogil
+cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer, size_t* buffer_size) nogil
+cdef int fragment_list_from_bytes(fragment_list_t* self, char*, size_t buffer_size) nogil
 
 # fragment_index_t methods
 cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=*, double max_fragment_size=*) nogil

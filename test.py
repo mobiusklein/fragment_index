@@ -52,3 +52,8 @@ print("Trying a fragment not in the index")
 iterator = index.search(37.0320, 1e-5)
 for f in iterator:
     print(f)
+
+fl = index[index.bin_for(57.021)]
+bin_dat = fl.to_bytes()
+print(bin_dat)
+print(fragment_index.FragmentList.from_bytes(bin_dat))

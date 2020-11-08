@@ -5,6 +5,8 @@ from libc.stdlib cimport malloc, realloc, calloc, free, qsort
 from libc.string cimport memcpy
 from libc.math cimport floor, fabs
 
+from cpython.bytearray cimport PyByteArray_FromStringAndSize, PyByteArray_Size, PyByteArray_AsString
+
 cdef extern from * nogil:
     int printf (const char *template, ...)
     void qsort (void *base, unsigned short n, unsigned short w, int (*cmp_func)(void*, void*))
@@ -174,19 +176,59 @@ cdef int fragment_list_binary_search(fragment_list_t* self, double query, double
     return 1
 
 
-cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer) nogil:
+cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer, size_t* buffer_size) nogil:
     cdef:
         char* byte_buffer
         size_t i, n
-
-    n = sizeof(fragment_t) * self.used
-    byte_buffer = <char*>malloc(sizeof(char) * n + 1)
+        size_t offset
+    offset = sizeof(size_t) + sizeof(uint8_t)
+    n = sizeof(fragment_t) * self.used + 1
+    byte_buffer = <char*>malloc(offset + sizeof(char) * n + 1)
     if byte_buffer == NULL:
         return 1
-    memcpy(<void*>byte_buffer, <void*>self.v, n)
-    byte_buffer[n + 1] = '\0'
+    for i in range(offset + sizeof(char) * n + 1):
+        byte_buffer[i] = '\0'
+    memcpy(<void*>byte_buffer, <void*>&self.used, sizeof(size_t))
+    memcpy(<void*>&byte_buffer[sizeof(size_t)], <void*>&self.sort_type, sizeof(uint8_t))
+    memcpy(<void*>&byte_buffer[offset], <void*>self.v, n)
     output_buffer[0] = byte_buffer
-    printf("%s\n", byte_buffer)
+    buffer_size[0] = n + offset
+    return 0
+
+
+cdef int fragment_list_from_bytes(fragment_list_t* self, char* buff, size_t buffer_size) nogil:
+    cdef:
+        int code
+        size_t offset
+        size_t i, n, list_size
+        uint8_t sort_type
+        fragment_t f
+    if self.v != NULL:
+        free(self.v)
+        self.v = NULL
+        self.used = 0
+        self.size = 0
+    offset = 0
+    if offset + sizeof(size_t) > buffer_size:
+        return 3
+    list_size = 0
+    list_size = (<size_t*>buff)[0]
+    offset += sizeof(size_t)
+    code = init_fragment_list(self, list_size)
+    if code == 1:
+        return 1
+    self.sort_type = sort_type
+    sort_type = 0
+    sort_type = (<uint8_t*>&buff[offset])[0]
+    offset += sizeof(uint8_t)
+    for i in range(list_size):
+        if offset + sizeof(fragment_t) > buffer_size:
+            return 3
+        f = (<fragment_t*>&buff[offset])[0]
+        offset += sizeof(fragment_t)
+        code = fragment_list_append(self, f)
+        if code != 0:
+            return 2
     return 0
 
 
@@ -626,15 +668,35 @@ cdef class FragmentList(object):
     cpdef bytearray to_bytes(self):
         cdef:
             char* buff
+            size_t buffer_size
             int code
             bytearray out
-        code = fragment_list_to_bytes(self.fragments, &buff)
+        buffer_size = 0
+        code = fragment_list_to_bytes(self.fragments, &buff, &buffer_size)
         if code == 1:
             raise MemoryError()
-        out = bytearray()
-        out[:] = buff
+        out = PyByteArray_FromStringAndSize(buff, buffer_size)
         free(buff)
         return out
+
+    @classmethod
+    def from_bytes(cls, bytearray bin_data):
+        cdef:
+            FragmentList self
+            int code
+            size_t buffer_size
+            char* buff
+        self = FragmentList()
+        buffer_size = PyByteArray_Size(bin_data)
+        buff = PyByteArray_AsString(bin_data)
+        code = fragment_list_from_bytes(self.fragments, buff, buffer_size)
+        if code == 1:
+            raise MemoryError()
+        if code == 2:
+            raise ValueError("Error adding fragments to list")
+        if code == 3:
+            raise ValueError("Malformed bytestring")
+        return self
 
 
 cdef class FragmentIndex(object):
