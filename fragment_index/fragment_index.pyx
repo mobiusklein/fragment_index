@@ -153,7 +153,7 @@ cdef int fragment_list_binary_search(fragment_list_t* self, double query, double
         mid = (hi + lo) // 2
         x = self.v[mid].mass
         err = (x - query) / query
-        if lo == hi - 1 or err < error_tolerance:
+        if lo == hi - 1 or fabs(err) < error_tolerance:
             i = mid
             while i > 0:
                 x = self.v[i].mass
@@ -217,9 +217,9 @@ cdef int fragment_list_from_bytes(fragment_list_t* self, char* buff, size_t buff
     code = init_fragment_list(self, list_size)
     if code == 1:
         return 1
-    self.sort_type = sort_type
     sort_type = 0
     sort_type = (<uint8_t*>&buff[offset])[0]
+    self.sort_type = sort_type
     offset += sizeof(uint8_t)
     for i in range(list_size):
         if offset + sizeof(fragment_t) > buffer_size:
@@ -299,7 +299,10 @@ cdef int fragment_index_add_parent(fragment_index_t* self, double mass, uint64_t
 
 
 cdef int fragment_index_parents_for(fragment_index_t* self, double mass, double error_tolerance, interval_t* out) nogil:
-    return fragment_list_binary_search(self.parent_index, mass, error_tolerance, out)
+    cdef:
+        int code
+    code = fragment_list_binary_search(self.parent_index, mass, error_tolerance, out)
+    return code
 
 
 cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, double high, double error_tolerance, interval_t* out) nogil:
