@@ -83,11 +83,12 @@ cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, 
         int code
         size_t n_parents, i, parent_offset
         match_list_t* matches
+        match_t match
         peak_t* peak
-        fragment_t* fragment
+        fragment_t fragment
         fragment_index_search_t iterator
 
-    fragment = NULL
+
     peak = NULL
 
     # Initialize match list and parent_id_interval
@@ -97,41 +98,55 @@ cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, 
         precursor_mass + parent_error_high,
         1e-6,
         &parent_id_interval)
-
+    parent_id_interval.end = index.parent_index.used
     n_parents = parent_id_interval.end - parent_id_interval.start + 1
+    printf("Parent Interval: %d-%d, %d parents\n", parent_id_interval.start, parent_id_interval.end, n_parents)
     matches = <match_list_t*>malloc(sizeof(match_list_t))
     if matches == NULL:
         return 1
     code = init_match_list(matches, n_parents)
     if code != 0:
         return 1
+    printf("Initializing Match List\n")
     for i in range(n_parents):
-        matches.v[i].parent_id = parent_id_interval.start + i
-        matches.v[i].score = 0
-        matches.v[i].hit_count = 0
+        match.parent_id = parent_id_interval.start + i
+        match.score = 0
+        match.hit_count = 0
+        match_list_append(matches, match)
 
+    printf("Search Peak List\n")
     # Search the index for each peak in the peak list
     for i in range(peak_list.used):
         peak = &peak_list.v[i]
-        code = fragment_index_search(index, peak.mass, error_tolerance, &iterator, parent_id_interval)
+        printf("Searching peak %d with mass %f\n", i, peak_list.v[i].mass)
+        code = fragment_index_search(index, peak_list.v[i].mass, error_tolerance, &iterator, parent_id_interval)
         if code != 0:
             return 2
+        printf("Iterator Bin %d of %d, current position %d/%d\n",
+               iterator.current_bin, iterator.high_bin, iterator.position, iterator.position_range.end)
+        printf("Does iterator have content?\n")
+        printf("%d\n", fragment_index_search_has_next(&iterator))
         while fragment_index_search_has_next(&iterator):
-            code = fragment_index_search_next(&iterator, fragment)
+            printf("Fetching next fragment\n")
+            code = fragment_index_search_next(&iterator, &fragment)
+            printf("Code: %d\n", code)
             if code != 0:
                 break
+            printf("Fragment found, %f, %d, %d\n", fragment.mass, fragment.series, fragment.parent_id)
             parent_offset = fragment.parent_id
             if parent_offset < parent_id_interval.start:
                 printf("Parent ID %d outside of expected interval [%d, %d] for mass %f\n",
-                       parent_offset, parent_id_interval.start, parent_id_interval.end, peak.mass)
+                       parent_offset, parent_id_interval.start, parent_id_interval.end, peak_list.v[i].mass)
                 return 3
             parent_offset -= parent_id_interval.start
-            score_matched_peak(peak, fragment, &matches.v[parent_offset])
-
-    result.index = index
-    result.peak_list = peak_list
+            printf("Scoring parent offset %d for fragment %d\n", parent_offset, fragment.parent_id)
+            # score_matched_peak(peak, &fragment, &matches.v[parent_offset])
+    printf("Peaks Searched\n")
+    printf("result != NULL? %d\n", result != NULL)
+    # result.index = index
+    # result.peak_list = peak_list
     result.match_list = matches
-    result.parent_interval = parent_id_interval
+    # result.parent_interval = parent_id_interval
     return 0
 
 
@@ -162,9 +177,10 @@ cdef class PeakList(object):
         self._init_list()
 
     def __dealloc__(self):
-        if self.owned:
+        if self.owned and self.peaks != NULL:
             free_peak_list(self.peaks)
             free(self.peaks)
+            self.peaks = NULL
 
     def __len__(self):
         return self.peaks.used
@@ -225,9 +241,10 @@ cdef class MatchList(object):
         self._init_list()
 
     def __dealloc__(self):
-        if self.owned:
+        if self.owned and self.matches != NULL:
             free_match_list(self.matches)
             free(self.matches)
+            self.matches = NULL
 
     def __len__(self):
         return self.matches.used
@@ -267,13 +284,30 @@ def search_index(FragmentIndex index, PeakList peaks, double precursor_mass, dou
         int code
         MatchList matches
     search_result = <fragment_search_t*>malloc(sizeof(search_result))
-    search_fragment_index(
-        index.index, peaks.peaks,
-        precursor_mass, parent_error_low,
-        parent_error_high, error_tolerance,
-        search_result)
-    matches = MatchList._create(search_result.match_list)
-    matches.owned = True
-    print(matches)
+    if search_result == NULL:
+        return 1
+    search_result.index = NULL
+    search_result.peak_list = NULL
+    search_result.match_list = NULL
+
+    print(peaks, peaks.peaks.size)
+    code = search_fragment_index(
+        index.index,
+        peaks.peaks,
+        precursor_mass=precursor_mass,
+        parent_error_low=parent_error_low,
+        parent_error_high=parent_error_high,
+        error_tolerance=error_tolerance,
+        result=search_result)
+
+    print("After search")
+    print(code)
+    print("Freeing Memory")
     free(search_result)
-    return matches
+    return code
+    # for i in range(search_result.match_list.used):
+    #     print(i, search_result.match_list.v[i])
+    # matches = MatchList._create(search_result.match_list)
+    # matches.owned = True
+    # free(search_result)
+    # return matches

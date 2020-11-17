@@ -1,8 +1,9 @@
 import itertools
 from pyteomics import mass, parser
 import fragment_index
-
+import faulthandler
 from pyteomics import mass as masslib
+faulthandler.enable()
 # Ten bins per dalton, maximum fragment mass of 3000.0
 index = fragment_index.FragmentIndex(10, 3000.0)
 
@@ -59,13 +60,18 @@ for f in iterator:
 # print(bin_dat)
 # print(fragment_index.FragmentList.from_bytes(bin_dat))
 
+print("Building Peak List")
+
 peptide = "SDVMYTDWK"
 pl = fragment_index.PeakList()
 for i in range(1, len(peptide) - 1):
     pl.append(masslib.fast_mass(peptide[i:], ion_type='y'), i * 100, 1)
+    print(pl)
+    print(pl[i - 1])
+    print(list(index.search(pl[i - 1]['mass'])))
 
 precursor_mass = masslib.fast_mass(peptide)
-matches = fragment_index.search_index(index, pl, precursor_mass, -2, 300)
+matches = fragment_index.search_index(index, pl, precursor_mass, -200, 700)
 print(matches)
 # parent_interval = index.parents_for_range(precursor_mass - 2, precursor_mass + 300)
 # print(parent_interval)
@@ -74,3 +80,6 @@ print(matches)
 #     print(peak['mass'])
 #     it = index.search(peak['mass'])
 #     print(it.next())
+
+import IPython
+IPython.embed()
