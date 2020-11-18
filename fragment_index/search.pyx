@@ -196,7 +196,7 @@ cdef class PeakList(object):
     def __getitem__(self, i):
         if isinstance(i, slice):
             out = []
-            for j in range(i.start, max(i.stop, len(self)), i.step):
+            for j in range(i.start or 0, max(i.stop or len(self), len(self)), i.step):
                 out.append(self[j])
             return out
         if i  >= self.peaks.used:
@@ -220,6 +220,41 @@ cdef class PeakList(object):
         out = peak_list_append(self.peaks, peak)
         if out == 1:
             raise MemoryError()
+
+    @classmethod
+    def from_arrays(cls, mz_array, intensity_array, charge_array=None):
+        cdef:
+            PeakList self
+            Py_ssize_t i
+            float32_t mz
+            float32_t mass
+            float32_t intensity
+            int charge
+
+        self = cls()
+        for i, mz in enumerate(mz_array):
+            intensity = intensity_array[i]
+            if charge_array is not None:
+                charge = charge_array[i]
+            else:
+                charge = 1
+            if charge != 0:
+                mass = neutral_mass(mz, charge)
+            else:
+                mass = mz
+            self.append(mass, intensity, charge)
+        return self
+
+
+cdef double PROTON = 1.00727646677
+
+
+cdef double neutral_mass(double mz,  int z, double charge_carrier=PROTON) nogil:
+    return (mz * fabs(z)) - (z * charge_carrier)
+
+@cython.cdivision
+cdef double mass_charge_ratio(double neutral_mass, int z, double charge_carrier=PROTON) nogil:
+    return (neutral_mass + (z * charge_carrier)) / fabs(z)
 
 
 cdef class MatchList(object):
@@ -260,7 +295,7 @@ cdef class MatchList(object):
     def __getitem__(self, i):
         if isinstance(i, slice):
             out = []
-            for j in range(i.start, max(i.stop, len(self)), i.step):
+            for j in range(i.start or 0, max(i.stop or len(self), len(self)), i.step):
                 out.append(self[j])
             return out
         if i  >= self.matches.used:
@@ -297,15 +332,15 @@ def search_index(FragmentIndex index, PeakList peaks, double precursor_mass, dou
     search_result.index = NULL
     search_result.peak_list = NULL
     search_result.match_list = NULL
-
-    code = search_fragment_index(
-        index.index,
-        peaks.peaks,
-        precursor_mass=precursor_mass,
-        parent_error_low=parent_error_low,
-        parent_error_high=parent_error_high,
-        error_tolerance=error_tolerance,
-        result=search_result)
+    with nogil:
+        code = search_fragment_index(
+            index.index,
+            peaks.peaks,
+            precursor_mass=precursor_mass,
+            parent_error_low=parent_error_low,
+            parent_error_high=parent_error_high,
+            error_tolerance=error_tolerance,
+            result=search_result)
 
     if code != 0:
         raise ValueError()

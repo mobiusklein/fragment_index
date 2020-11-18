@@ -315,6 +315,8 @@ cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, do
     return 0
 
 
+# Fragment Index Search Methods
+
 cdef bint fragment_index_search_has_next(fragment_index_search_t* self) nogil:
     if self.position < self.position_range.end:
         return True
@@ -630,7 +632,7 @@ cdef class FragmentList(object):
     def __getitem__(self, i):
         if isinstance(i, slice):
             out = []
-            for j in range(i.start, max(i.stop, len(self)), i.step):
+            for j in range(i.start or 0, max(i.stop or len(self), len(self)), i.step):
                 out.append(self[j])
             return out
         if i  >= self.fragments.used:

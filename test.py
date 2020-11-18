@@ -55,16 +55,13 @@ iterator = index.search(37.0320, 1e-5)
 for f in iterator:
     print(f)
 
-# fl = index[index.bin_for(57.021)]
-# bin_dat = fl.to_bytes()
-# print(bin_dat)
-# print(fragment_index.FragmentList.from_bytes(bin_dat))
-
 print("Building Peak List")
 peptide = "SDVMYTDWK"
 pl = fragment_index.PeakList()
 for i in range(1, len(peptide) - 1):
-    pl.append(masslib.fast_mass(peptide[i:], ion_type='y'), i * 100, 1)
+    pl.append(masslib.fast_mass(
+        peptide[i:], ion_type='y'), i * 100, 1)
+    pl.append(masslib.fast_mass(peptide[:i], ion_type='b'), i * 100, 1)
 
 precursor_mass = masslib.fast_mass(peptide)
 print("Executing Index Search")

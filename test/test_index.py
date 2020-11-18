@@ -3,19 +3,33 @@ from pyteomics import fasta, parser, mass
 
 data_path = os.path.join(os.path.dirname(__file__), "test_data")
 
-from fragment_index import FragmentIndex, SeriesEnum, SortingEnum
+from fragment_index import FragmentIndex, SeriesEnum, SortingEnum, PeakList, search_index
 
 
 def get_test_data(filename):
     return os.path.join(data_path, filename)
 
 
-def test_index():
-    path = get_test_data("yeast_glycoproteins.fa")
+def peptide_to_peaklist(peptide):
+    pl = PeakList()
+    for i in range(1, len(peptide)):
+        pl.append(mass.fast_mass(
+            peptide[i:], ion_type='y'), i * 100, 1)
+        pl.append(mass.fast_mass(peptide[:i], ion_type='b'), i * 100, 1)
+    return pl
+
+
+def digest_proteins(fasta_path):
     peptides = []
-    for prot in fasta.FASTA(path):
+    for prot in fasta.FASTA(fasta_path):
         peptides.extend(parser.cleave(prot.sequence, 'trypsin', 0))
     peptides.sort(key=mass.fast_mass)
+    return peptides
+
+
+def test_index():
+    path = get_test_data("yeast_glycoproteins.fa")
+    peptides = digest_proteins(path)
 
     index = FragmentIndex()
     for j, peptide in enumerate(peptides):
@@ -40,5 +54,13 @@ def test_index():
 
     search = index.search(115.084)
     assert len(list(search)) == 0
+
+    peptide = 'NINVLSDICFPLSNNAHDSLPTFNNGSDLFNPLYFAVLNAATPAR'
+    pm = mass.fast_mass(peptide)
+    pl = peptide_to_peaklist(peptide)
+    assert len(pl) == 88
+    matches = search_index(index, pl, pm, 10, 500)
+    assert len(matches) == 97
+    assert matches[0]['parent_id'] == 9791
 
     return index
