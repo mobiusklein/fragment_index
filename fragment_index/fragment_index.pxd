@@ -6,6 +6,8 @@ ctypedef np.float32_t float32_t
 ctypedef np.uint8_t uint8_t
 ctypedef np.uint16_t uint16_t
 
+ctypedef np.uint32_t int_id_t
+
 
 cpdef enum SeriesEnum:
     parent = 0
@@ -19,7 +21,7 @@ cpdef enum SeriesEnum:
 
 cdef struct fragment_t:
     float32_t mass
-    uint32_t parent_id
+    int_id_t parent_id
     uint8_t series
     uint16_t ordinal
 
@@ -95,7 +97,7 @@ cdef int free_fragment_index(fragment_index_t* self) nogil
 cpdef size_t total_bins_for_mass(int bins_per_dalton, double max_fragment_size) nogil
 cdef size_t bin_for_mass(fragment_index_t* self, double mass) nogil
 cdef void fragment_index_sort(fragment_index_t* self, SortingEnum sort_type) nogil
-cdef int fragment_index_add_parent(fragment_index_t* self, double mass, uint64_t parent_id) nogil
+cdef int fragment_index_add_parent(fragment_index_t* self, double mass, int_id_t parent_id) nogil
 cdef int fragment_index_parents_for(fragment_index_t* self, double mass, double error_tolerance, interval_t* out) nogil
 cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, double high, double error_tolerance, interval_t* out) nogil
 
@@ -131,7 +133,7 @@ cdef class FragmentList(object):
 
     cdef void _init_list(self)
     cpdef clear(self)
-    cpdef append(self, float32_t mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=*)
+    cpdef append(self, float32_t mass, SeriesEnum series, int_id_t parent_id, uint16_t ordinal=*)
     cpdef sort(self, SortingEnum sort_type=?)
     cpdef interval_t search(self, double query, double error_tolerance=*)
     cpdef bytearray to_bytes(self)
@@ -150,8 +152,8 @@ cdef class FragmentIndex(object):
     cpdef _wrap_bins(self)
     cpdef clear(self, reinit=*)
     cpdef size_t bin_for(self, double mass)
-    cpdef add(self, double mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=*)
-    cpdef add_parent(self, double mass, uint32_t parent_id)
+    cpdef add(self, double mass, SeriesEnum series, int_id_t parent_id, uint16_t ordinal=*)
+    cpdef add_parent(self, double mass, int_id_t parent_id)
     cpdef sort(self, SortingEnum sort_type=?)
     cpdef size_t count(self)
     cpdef interval_t parents_for(self, double mass, double error_tolerance=*)

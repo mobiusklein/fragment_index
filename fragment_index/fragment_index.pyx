@@ -286,7 +286,7 @@ cdef void fragment_index_sort(fragment_index_t* self, SortingEnum sort_type) nog
     self.sort_type = sort_type
 
 
-cdef int fragment_index_add_parent(fragment_index_t* self, double mass, uint64_t parent_id) nogil:
+cdef int fragment_index_add_parent(fragment_index_t* self, double mass, int_id_t parent_id) nogil:
     cdef:
         fragment_t f
     if self.parent_index.used > 0 and (self.parent_index.v[self.parent_index.used - 1].mass - mass) > 1e-3:
@@ -651,7 +651,7 @@ cdef class FragmentList(object):
     def __repr__(self):
         return "{self.__class__.__name__}({size})".format(self=self, size=len(self))
 
-    cpdef append(self, float32_t mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=0):
+    cpdef append(self, float32_t mass, SeriesEnum series, int_id_t parent_id, uint16_t ordinal=0):
         cdef fragment_t fragment = fragment_t(mass, parent_id, series, ordinal)
         out = fragment_list_append(self.fragments, fragment)
         if out == 1:
@@ -783,7 +783,7 @@ cdef class FragmentIndex(object):
     cpdef size_t bin_for(self, double mass):
         return bin_for_mass(self.index, mass)
 
-    cpdef add(self, double mass, SeriesEnum series, uint32_t parent_id, uint16_t ordinal=0):
+    cpdef add(self, double mass, SeriesEnum series, int_id_t parent_id, uint16_t ordinal=0):
         if mass > self.index.max_fragment_size:
             return
         if mass < 0:
@@ -795,7 +795,7 @@ cdef class FragmentIndex(object):
             value = self.index.size - 1
         fragment_list_append(&self.index.bins[value], fragment_t(mass, parent_id, series, ordinal))
 
-    cpdef add_parent(self, double mass, uint32_t parent_id):
+    cpdef add_parent(self, double mass, int_id_t parent_id):
         cdef:
             int result
         result = fragment_index_add_parent(self.index, mass, parent_id)
