@@ -54,6 +54,9 @@ cdef void fragment_list_sort(fragment_list_t* self, SortingEnum sort_type) nogil
     elif sort_type == SortingEnum.by_parent:
         qsort(self.v, self.used, sizeof(fragment_t), compare_by_parent_id)
     self.sort_type = sort_type
+    # Update boundaries
+    fragment_list_lowest_mass(self)
+    fragment_list_highest_mass(self)
 
 cdef double fragment_list_lowest_mass(fragment_list_t* self) nogil:
     cdef:

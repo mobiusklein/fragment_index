@@ -48,7 +48,7 @@ include "parent_list.pyx"
 
 # Fragment Index Methods
 
-cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=1000, double max_fragment_size=3000) nogil:
+cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=10, double max_fragment_size=3000) nogil:
     cdef:
         size_t total_bins, i
         int result
