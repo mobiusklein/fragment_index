@@ -196,7 +196,7 @@ cdef class PeakList(object):
     def __getitem__(self, i):
         if isinstance(i, slice):
             out = []
-            for j in range(i.start or 0, max(i.stop or len(self), len(self)), i.step):
+            for j in range(i.start or 0, min(i.stop or len(self), len(self)), i.step or 1):
                 out.append(self[j])
             return out
         if i  >= self.peaks.used:
@@ -295,7 +295,7 @@ cdef class MatchList(object):
     def __getitem__(self, i):
         if isinstance(i, slice):
             out = []
-            for j in range(i.start or 0, max(i.stop or len(self), len(self)), i.step):
+            for j in range(i.start or 0, min(i.stop or len(self), len(self)), i.step or 1):
                 out.append(self[j])
             return out
         if i  >= self.matches.used:
