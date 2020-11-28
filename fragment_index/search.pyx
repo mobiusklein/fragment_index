@@ -3,6 +3,9 @@ from libc.stdlib cimport malloc, realloc, calloc, free, qsort
 from libc.string cimport memcpy
 from libc.math cimport floor, fabs, log10
 
+import numpy as np
+cimport numpy as np
+
 cdef extern from * nogil:
     int printf (const char *template, ...)
     void qsort (void *base, unsigned short n, unsigned short w, int (*cmp_func)(void*, void*))
@@ -19,6 +22,9 @@ from fragment_index.fragment_index cimport (
     fragment_index_search,
     fragment_index_search_next,
     fragment_index_search_has_next)
+
+
+np.import_arrays()
 
 
 cdef int init_peak_list(peak_list_t* self, size_t size) nogil:
@@ -222,7 +228,7 @@ cdef class PeakList(object):
             raise MemoryError()
 
     @classmethod
-    def from_arrays(cls, mz_array, intensity_array, charge_array=None):
+    def from_arrays(cls, numeric_collection1 mz_array, numeric_collection2 intensity_array, object charge_array=None):
         cdef:
             PeakList self
             Py_ssize_t i
@@ -232,7 +238,9 @@ cdef class PeakList(object):
             int charge
 
         self = cls()
-        for i, mz in enumerate(mz_array):
+        n = len(mz_array)
+        for i in range(n):
+            mz = mz_array[i]
             intensity = intensity_array[i]
             if charge_array is not None:
                 charge = charge_array[i]
