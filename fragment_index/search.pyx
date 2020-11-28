@@ -24,7 +24,7 @@ from fragment_index.fragment_index cimport (
     fragment_index_search_has_next)
 
 
-np.import_arrays()
+np.import_array()
 
 
 cdef int init_peak_list(peak_list_t* self, size_t size) nogil:
