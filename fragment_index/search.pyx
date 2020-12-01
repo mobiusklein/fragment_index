@@ -100,8 +100,98 @@ cdef int score_matched_peak(peak_t* peak, fragment_t* fragment, match_t* match) 
     return 0
 
 
+cdef int match_list_init_fn(interval_t* parent_id_interval, void** match_list) nogil:
+    cdef:
+        int code
+        size_t n_parents, i
+        match_list_t* matches
+        match_t match
+
+    n_parents = parent_id_interval.end - parent_id_interval.start + 1
+    matches = <match_list_t*>malloc(sizeof(match_list_t))
+    if matches == NULL:
+        return 1
+    code = init_match_list(matches, n_parents)
+    if code != 0:
+        return 1
+    for i in range(n_parents):
+        match.parent_id = parent_id_interval.start + i
+        match.score = 0
+        match.hit_count = 0
+        match_list_append(matches, match)
+    match_list[0] = matches
+    return 0
+
+
+cdef int score_matched_peak_log_int(peak_t* peak, fragment_t* fragment, void* match_list, size_t offset) nogil:
+    cdef:
+        match_t* match
+    match = &(<match_list_t*>match_list).v[offset]
+    match.score += log10(peak.intensity)
+    match.hit_count += 1
+    return 0
+
+
+cdef int _sort_match_list(void* match_list) nogil:
+    match_list_sort(<match_list_t*>match_list)
+    return 0
+
+
+basic_search_strategy.match_list_creator = match_list_init_fn
+basic_search_strategy.peak_scorer = score_matched_peak_log_int
+basic_search_strategy.match_sorter = _sort_match_list
+
+
+cdef int search_fragment_index2(fragment_index_t* index, peak_list_t* peak_list, search_strategy_t* strategy, double precursor_mass,
+                                double parent_error_low, double parent_error_high, double error_tolerance, void** result) nogil:
+    cdef:
+        interval_t parent_id_interval
+        int code
+        size_t n_parents, i, parent_offset
+        void* matches
+        peak_t* peak
+        fragment_t fragment
+        fragment_index_search_t iterator
+
+    peak = NULL
+
+    # Initialize match list and parent_id_interval
+    parent_id_interval.start = 0
+    parent_id_interval.end = -1
+    fragment_index_parents_for_range(
+        index,
+        precursor_mass - parent_error_low,
+        precursor_mass + parent_error_high,
+        1e-5,
+        &parent_id_interval)
+    code = strategy.match_list_creator(&parent_id_interval, &matches)
+    if code != 0:
+        return 1
+    # Search the index for each peak in the peak list
+    for i in range(peak_list.used):
+        peak = &peak_list.v[i]
+        code = fragment_index_search(index, peak_list.v[i].mass, error_tolerance, &iterator, parent_id_interval)
+        if code != 0:
+            return 2
+        while fragment_index_search_has_next(&iterator):
+            code = fragment_index_search_next(&iterator, &fragment)
+            if code != 0:
+                break
+            parent_offset = fragment.parent_id
+            if parent_offset < parent_id_interval.start:
+                printf("Parent ID %d outside of expected interval [%d, %d] for mass %f\n",
+                       parent_offset, parent_id_interval.start, parent_id_interval.end, peak_list.v[i].mass)
+                return 3
+            parent_offset -= parent_id_interval.start
+            strategy.peak_scorer(peak, &fragment, matches, parent_offset)
+
+    strategy.match_sorter(matches)
+    result[0] = matches
+    return 0
+
+
 cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, double precursor_mass, double parent_error_low,
-                               double parent_error_high, double error_tolerance, fragment_search_t* result) nogil:
+                               double parent_error_high, double error_tolerance, search_result_t* result) nogil:
     cdef:
         interval_t parent_id_interval
         int code
@@ -118,8 +208,6 @@ cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, 
     # Initialize match list and parent_id_interval
     parent_id_interval.start = 0
     parent_id_interval.end = -1
-    fragment_index_parents_for(index, precursor_mass - parent_error_low, 1e-5, &parent_id_interval)
-    fragment_index_parents_for(index, precursor_mass + parent_error_high, 1e-5, &parent_id_interval)
     fragment_index_parents_for_range(
         index,
         precursor_mass - parent_error_low,
@@ -156,9 +244,8 @@ cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, 
                 return 3
             parent_offset -= parent_id_interval.start
             score_matched_peak(peak, &fragment, &matches.v[parent_offset])
+
     match_list_sort(matches)
-    result.index = index
-    result.peak_list = peak_list
     result.match_list = matches
     result.parent_interval = parent_id_interval
     return 0
@@ -331,14 +418,12 @@ cdef class MatchList(object):
 
 def search_index(FragmentIndex index, PeakList peaks, double precursor_mass, double parent_error_low, double parent_error_high, double error_tolerance=2e-5):
     cdef:
-        fragment_search_t* search_result
+        search_result_t* search_result
         int code
         MatchList matches
-    search_result = <fragment_search_t*>malloc(sizeof(fragment_search_t))
+    search_result = <search_result_t*>malloc(sizeof(search_result_t))
     if search_result == NULL:
         raise MemoryError()
-    search_result.index = NULL
-    search_result.peak_list = NULL
     search_result.match_list = NULL
     with nogil:
         code = search_fragment_index(

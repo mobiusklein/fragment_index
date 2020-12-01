@@ -2,7 +2,12 @@ cimport numpy as np
 
 ctypedef np.uint64_t uint64_t
 ctypedef np.uint32_t uint32_t
+
 ctypedef np.float32_t float32_t
+
+ctypedef np.int32_t int32_t
+ctypedef np.int64_t int64_t
+
 ctypedef np.uint8_t uint8_t
 ctypedef np.uint16_t uint16_t
 

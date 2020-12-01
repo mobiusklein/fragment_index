@@ -43,9 +43,7 @@ cdef struct match_list_t:
     size_t used
 
 
-cdef struct fragment_search_t:
-    fragment_index_t* index
-    peak_list_t* peak_list
+cdef struct search_result_t:
     match_list_t* match_list
     interval_t parent_interval
 
@@ -87,8 +85,23 @@ cdef int free_match_list(match_list_t* self) nogil
 cdef int match_list_append(match_list_t* self, match_t match) nogil
 
 
+ctypedef int (*match_list_creator_fn)(interval_t* parent_id_interval, void** match_list) nogil
+ctypedef int (*score_matched_peak_fn)(peak_t* peak, fragment_t* fragment, void* match_list, size_t offset) nogil
+ctypedef int (*sort_match_list_fn)(void* match_list) nogil
+
+
+cdef struct search_strategy_t:
+    match_list_creator_fn match_list_creator
+    score_matched_peak_fn peak_scorer
+    sort_match_list_fn match_sorter
+
+
+
+cdef search_strategy_t basic_search_strategy
+
+
 cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, double precursor_mass, double parent_error_low,
-                               double parent_error_high, double error_tolerance, fragment_search_t* result) nogil
+                               double parent_error_high, double error_tolerance, search_result_t* result) nogil
 
 
 cdef class PeakList(object):
@@ -119,7 +132,5 @@ cdef class MatchList(object):
 
 cdef class SearchResult(object):
     cdef:
-        public FragmentIndex index
         public MatchList matches
-        public PeakList peak_list
-        fragment_search_t* search
+        search_result_t* search
