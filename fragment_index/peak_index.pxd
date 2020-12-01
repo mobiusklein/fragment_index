@@ -73,7 +73,7 @@ cdef int peak_index_parents_for_range(peak_index_t* self, double low, double hig
 
 # peak_index_search_t methods
 cdef bint peak_index_search_has_next(peak_index_search_t* self) nogil
-cdef int peak_index_search_next(peak_index_search_t* self, peak_t* fragment) nogil
+cdef int peak_index_search_next(peak_index_search_t* self, peak_t* peak) nogil
 cdef int peak_index_search(peak_index_t* self, double mass, double error_tolerance,
                                peak_index_search_t* iterator, interval_t scan_id_interval=*) nogil
 cdef int peak_index_search_set_parent_interval(peak_index_search_t* self, interval_t scan_id_interval) nogil
@@ -81,7 +81,7 @@ cdef int peak_index_search_set_parent_interval(peak_index_search_t* self, interv
 # peak_index_traverse_t methods
 cdef int peak_index_traverse(peak_index_t* self, peak_index_traverse_t* iterator, interval_t scan_id_interval=*) nogil
 cdef bint peak_index_traverse_has_next(peak_index_traverse_t* self) nogil
-cdef int peak_index_traverse_next(peak_index_traverse_t* self, peak_t* fragment) nogil
+cdef int peak_index_traverse_next(peak_index_traverse_t* self, peak_t* peak) nogil
 cdef int peak_index_traverse_seek(peak_index_traverse_t* self, double query, double error_tolerance=*) nogil
 
 
@@ -128,3 +128,42 @@ cdef class PeakIndexTraverseIterator(object):
     cdef PeakIndexTraverseIterator _create(peak_index_traverse_t* iterator)
 
     cpdef int seek(self, double query, double error_tolerance=*)
+
+cdef struct match_t:
+    uint32_t parent_id
+    float32_t score
+    uint32_t hit_count
+
+
+cdef struct match_list_t:
+    match_t* v
+    size_t size
+    size_t used
+
+
+cdef struct search_result_t:
+    match_list_t* match_list
+    interval_t parent_interval
+
+
+cdef int init_match_list(match_list_t* self, size_t size) nogil
+cdef int free_match_list(match_list_t* self) nogil
+cdef int match_list_append(match_list_t* self, match_t match) nogil
+
+
+cdef int search_peak_index(peak_index_t* index, double* mass_list, size_t n, double precursor_mass,
+                           double parent_error_low, double parent_error_high, double error_tolerance,
+                           search_result_t* result) nogil
+
+
+cdef class MatchList(object):
+    cdef:
+        match_list_t* matches
+        public bint owned
+
+    @staticmethod
+    cdef MatchList _create(match_list_t* pointer)
+
+    cdef void _init_list(self)
+    cpdef clear(self)
+    cpdef append(self, uint32_t parent_id, float32_t score, uint32_t hit_count)

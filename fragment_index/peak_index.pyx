@@ -3,13 +3,17 @@
 cimport cython
 from libc.stdlib cimport malloc, realloc, calloc, free, qsort
 from libc.string cimport memcpy
-from libc.math cimport floor, fabs
+from libc.math cimport floor, fabs, log10
 
 from cpython.bytearray cimport PyByteArray_FromStringAndSize, PyByteArray_Size, PyByteArray_AsString
 
 cdef extern from * nogil:
     int printf (const char *template, ...)
     void qsort (void *base, unsigned short n, unsigned short w, int (*cmp_func)(void*, void*))
+
+
+import numpy as np
+cimport numpy as np
 
 
 cdef double _round(double x) nogil:
@@ -46,7 +50,7 @@ EMPTY_INTERVAL.end = 0
 include "peak_list.pyx"
 include "parent_list.pyx"
 
-# Fragment Index Methods
+# Peak Index Methods
 
 cdef int init_peak_index(peak_index_t* self, int bins_per_dalton=10, double max_peak_size=3000) nogil:
     cdef:
@@ -132,7 +136,7 @@ cdef int peak_index_parents_for_range(peak_index_t* self, double low, double hig
     return 0
 
 
-# Fragment Index Search Methods
+# Peak Index Search Methods
 
 cdef bint peak_index_search_has_next(peak_index_search_t* self) nogil:
     if self.position < self.position_range.end:
@@ -676,3 +680,208 @@ cdef class PeakIndexTraverseIterator(object):
 
     cpdef int seek(self, double query, double error_tolerance=1e-5):
         return peak_index_traverse_seek(self.iterator, query, error_tolerance)
+
+
+cdef int init_match_list(match_list_t* self, size_t size) nogil:
+    self.v = <match_t*>malloc(sizeof(match_t) * size)
+    self.used = 0
+    self.size = size
+    if self.v == NULL:
+        return 1
+    return 0
+
+
+cdef int free_match_list(match_list_t* self) nogil:
+    free(self.v)
+    return 0
+
+
+cdef int match_list_append(match_list_t* self, match_t match) nogil:
+    if self.used >= self.size - 1:
+        self.v = <match_t*>realloc(self.v, sizeof(match_t) * self.size * 2)
+        if self.v == NULL:
+            return 1
+        self.size = self.size * 2
+    self.v[self.used] = match
+    self.used += 1
+    return 0
+
+
+cdef int compare_by_score_less_than(const void * a, const void * b) nogil:
+    if (<match_t*>a).score < (<match_t*>b).score:
+        return -1
+    elif (<match_t*>a).score == (<match_t*>b).score:
+        return 0
+    elif (<match_t*>a).score > (<match_t*>b).score:
+        return 1
+
+cdef int compare_by_score_greater_than(const void * a, const void * b) nogil:
+    return -compare_by_score_less_than(a, b)
+
+
+cdef int match_list_sort(match_list_t* self) nogil:
+    qsort(self.v, self.used, sizeof(match_t), compare_by_score_greater_than)
+    return 0
+
+cdef int search_peak_index(peak_index_t* index, double* mass_list, size_t n, double precursor_mass,
+                           double parent_error_low, double parent_error_high, double error_tolerance,
+                           search_result_t* result) nogil:
+    cdef:
+        interval_t parent_id_interval
+        int code
+        size_t n_parents, i, parent_offset
+        match_list_t* matches
+        match_t match
+        double mass
+        peak_t peak
+        peak_index_search_t iterator
+
+    # Initialize match list and parent_id_interval
+    parent_id_interval.start = 0
+    parent_id_interval.end = -1
+    peak_index_parents_for_range(
+        index,
+        precursor_mass - parent_error_low,
+        precursor_mass + parent_error_high,
+        1e-5,
+        &parent_id_interval)
+    n_parents = parent_id_interval.end - parent_id_interval.start + 1
+    matches = <match_list_t*>malloc(sizeof(match_list_t))
+    if matches == NULL:
+        return 1
+    code = init_match_list(matches, n_parents)
+    if code != 0:
+        return 1
+    for i in range(n_parents):
+        match.parent_id = parent_id_interval.start + i
+        match.score = 0
+        match.hit_count = 0
+        match_list_append(matches, match)
+
+    # Search the index for each peak in the peak list
+    for i in range(n):
+        mass = mass_list[i]
+        code = peak_index_search(index, mass, error_tolerance, &iterator, parent_id_interval)
+        if code != 0:
+            return 2
+        while peak_index_search_has_next(&iterator):
+            code = peak_index_search_next(&iterator, &peak)
+            if code != 0:
+                break
+            parent_offset = peak.scan_id
+            if parent_offset < parent_id_interval.start:
+                printf("Parent ID %d outside of expected interval [%d, %d] for mass %f\n",
+                       parent_offset, parent_id_interval.start, parent_id_interval.end, mass)
+                return 3
+            parent_offset -= parent_id_interval.start
+            score_matched_peak(&peak, mass, &matches.v[parent_offset])
+
+    match_list_sort(matches)
+    result.match_list = matches
+    result.parent_interval = parent_id_interval
+    return 0
+
+
+cdef int score_matched_peak(peak_t* peak, double mass, match_t* match) nogil:
+    match.score += log10(peak.intensity)
+    match.hit_count += 1
+    return 0
+
+
+cdef class MatchList(object):
+
+    @staticmethod
+    cdef MatchList _create(match_list_t* pointer):
+        cdef MatchList self = MatchList.__new__(MatchList)
+        self.matches = pointer
+        self.owned = False
+        return self
+
+    @property
+    def allocated(self):
+        return self.matches.size
+
+    def __init__(self, *args, **kwargs):
+        self._init_list()
+
+    cdef void _init_list(self):
+        self.matches = <match_list_t*>malloc(sizeof(match_list_t))
+        self.owned = True
+        init_match_list(self.matches, 32)
+
+    cpdef clear(self):
+        free_match_list(self.matches)
+        free(self.matches)
+        self._init_list()
+
+    def __dealloc__(self):
+        if self.owned and self.matches != NULL:
+            free_match_list(self.matches)
+            free(self.matches)
+            self.matches = NULL
+
+    def __len__(self):
+        return self.matches.used
+
+    def __getitem__(self, i):
+        if isinstance(i, slice):
+            out = []
+            for j in range(i.start or 0, min(i.stop or len(self), len(self)), i.step or 1):
+                out.append(self[j])
+            return out
+        if i  >= self.matches.used:
+            raise IndexError(i)
+        elif i < 0:
+            j = len(self) + i
+            if j < 0:
+                raise IndexError(i)
+            i = j
+        return self.matches.v[i]
+
+    def __iter__(self):
+        for i in range(self.matches.used):
+            yield self.matches.v[i]
+
+    def __repr__(self):
+        return "{self.__class__.__name__}({size})".format(self=self, size=len(self))
+
+    cpdef append(self, uint32_t parent_id, float32_t score, uint32_t hit_count):
+        cdef match_t match = match_t(parent_id, score, hit_count)
+        out = match_list_append(self.matches, match)
+        if out == 1:
+            raise MemoryError()
+
+
+def search_index(PeakIndex index, object mass_list, double precursor_mass, double parent_error_low, double parent_error_high, double error_tolerance=2e-5):
+    cdef:
+        search_result_t* search_result
+        int code
+        double[::1] mass_list_
+        size_t n
+        MatchList matches
+
+    mass_list_ = np.asanyarray(mass_list, dtype=np.double)
+    n = len(mass_list_)
+
+    search_result = <search_result_t*>malloc(sizeof(search_result_t))
+    if search_result == NULL:
+        raise MemoryError()
+    search_result.match_list = NULL
+    with nogil:
+        code = search_peak_index(
+            index.index,
+            &mass_list_[0],
+            n,
+            precursor_mass=precursor_mass,
+            parent_error_low=parent_error_low,
+            parent_error_high=parent_error_high,
+            error_tolerance=error_tolerance,
+            result=search_result)
+
+    if code != 0:
+        raise ValueError()
+
+    matches = MatchList._create(search_result.match_list)
+    matches.owned = True
+    free(search_result)
+    return matches
