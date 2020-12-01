@@ -788,6 +788,34 @@ cdef int score_matched_peak(peak_t* peak, double mass, match_t* match) nogil:
     return 0
 
 
+cdef class Match(object):
+
+    @staticmethod
+    cdef Match _create(match_t* match):
+        cdef Match self = Match.__new__(Match)
+        self.match = match[0]
+        return self
+
+    @property
+    def score(self):
+        return self.match.score
+
+    @property
+    def parent_id(self):
+        return self.match.parent_id
+
+    @property
+    def hit_count(self):
+        return self.match.hit_count
+
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def __repr__(self):
+        template = "{self.__class__.__name__}({self.score}, {self.parent_id}, {self.hit_count}"
+        return template.format(self=self)
+
+
 cdef class MatchList(object):
 
     @staticmethod
@@ -836,11 +864,11 @@ cdef class MatchList(object):
             if j < 0:
                 raise IndexError(i)
             i = j
-        return self.matches.v[i]
+        return Match._create(&self.matches.v[i])
 
     def __iter__(self):
         for i in range(self.matches.used):
-            yield self.matches.v[i]
+            yield Match._create(&self.matches.v[i])
 
     def __repr__(self):
         return "{self.__class__.__name__}({size})".format(self=self, size=len(self))
@@ -850,6 +878,22 @@ cdef class MatchList(object):
         out = match_list_append(self.matches, match)
         if out == 1:
             raise MemoryError()
+
+    cpdef above(self, double threshold):
+        cdef:
+            size_t i, n
+            match_list_t* acc
+        n = self.matches.used
+        acc = <match_list_t*>malloc(sizeof(match_list_t))
+        init_match_list(acc, n // 2)
+        for i in range(n):
+            if self.matches.v[i].score >= threshold:
+                match_list_append(acc, self.matches.v[i])
+        if self.owned:
+            self.clear()
+        self.matches = acc
+        return self
+
 
 
 def search_index(PeakIndex index, object mass_list, double precursor_mass, double parent_error_low, double parent_error_high, double error_tolerance=2e-5):

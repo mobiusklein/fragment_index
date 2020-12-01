@@ -156,6 +156,14 @@ cdef int search_peak_index(peak_index_t* index, double* mass_list, size_t n, dou
                            search_result_t* result) nogil
 
 
+cdef class Match(object):
+    cdef:
+        match_t match
+
+    @staticmethod
+    cdef Match _create(match_t* match)
+
+
 cdef class MatchList(object):
     cdef:
         match_list_t* matches
@@ -167,3 +175,5 @@ cdef class MatchList(object):
     cdef void _init_list(self)
     cpdef clear(self)
     cpdef append(self, uint32_t parent_id, float32_t score, uint32_t hit_count)
+    cpdef above(self, double threshold)
+
