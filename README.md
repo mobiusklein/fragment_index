@@ -73,7 +73,7 @@ parent_id_end = interval['end']
 for mass, intensity in peak_list:
     # Skip to the matches for mass
     for frag in index.search(mass, 1e-5):
-        if parent_id <= frag['parent_id'] <= parent_id_end:
+        if parent_id_start <= frag['parent_id'] <= parent_id_end:
             scores[frag['parent_id']] += log(intensity)
 
 best_matches_descending = sorted(scores.items(), key=lambda x: x[1], reverse=True)
