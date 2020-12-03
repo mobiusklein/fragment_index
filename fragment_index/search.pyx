@@ -214,7 +214,7 @@ cdef int search_fragment_index(fragment_index_t* index, peak_list_t* peak_list, 
         precursor_mass + parent_error_high,
         1e-5,
         &parent_id_interval)
-    n_parents = parent_id_interval.end - parent_id_interval.start + 1
+    n_parents = parent_id_interval.end - parent_id_interval.start
     matches = <match_list_t*>malloc(sizeof(match_list_t))
     if matches == NULL:
         return 1
