@@ -21,18 +21,20 @@ def make_extensions():
         extensions = cythonize([
             Extension(name='fragment_index.fragment_index', sources=["fragment_index/fragment_index.pyx"],
                     include_dirs=[numpy.get_include()]),
-            Extension(name='fragment_index.peak_index', sources=["fragment_index/peak_index.pyx"],
-                      include_dirs=[numpy.get_include()]),
             Extension(name='fragment_index.search', sources=["fragment_index/search.pyx"],
+                      include_dirs=[numpy.get_include()]),
+            Extension(name='fragment_index.peak_index.peak_index', sources=["fragment_index/peak_index/peak_index.pyx"],
+                      include_dirs=[numpy.get_include()]),
+            Extension(name='fragment_index.serializer', sources=["fragment_index/serializer.pyx"],
                       include_dirs=[numpy.get_include()]),
         ], compiler_directives=cython_directives)
     except ImportError:
         extensions = [
             Extension(name='fragment_index.fragment_index', sources=["fragment_index/fragment_index.c"],
                       include_dirs=[numpy.get_include()]),
-            Extension(name='fragment_index.peak_index', sources=["fragment_index/peak_index.c"],
-                      include_dirs=[numpy.get_include()]),
             Extension(name='fragment_index.search', sources=["fragment_index/search.c"],
+                      include_dirs=[numpy.get_include()]),
+            Extension(name='fragment_index.peak_index.peak_index', sources=["fragment_index/peak_index/peak_index.c"],
                       include_dirs=[numpy.get_include()]),
         ]
     return extensions

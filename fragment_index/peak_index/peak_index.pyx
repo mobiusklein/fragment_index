@@ -47,8 +47,8 @@ EMPTY_INTERVAL.start = 0
 EMPTY_INTERVAL.end = 0
 
 
+include "../parent_list.pyx"
 include "peak_list.pyx"
-include "parent_list.pyx"
 
 # Peak Index Methods
 

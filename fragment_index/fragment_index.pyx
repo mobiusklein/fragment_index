@@ -48,7 +48,7 @@ include "parent_list.pyx"
 
 # Fragment Index Methods
 
-cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=10, double max_fragment_size=3000) nogil:
+cdef int init_fragment_index(fragment_index_t* self, uint32_t bins_per_dalton=10, float64_t max_fragment_size=3000) nogil:
     cdef:
         size_t total_bins, i
         int result
@@ -131,6 +131,20 @@ cdef int fragment_index_parents_for_range(fragment_index_t* self, double low, do
     out.end = tmp.end
     return 0
 
+
+cdef int fragment_index_to_bytes(fragment_index_t* self, char** output_buffer, size_t* buffer_size) nogil:
+    cdef:
+        char* byte_buffer
+        size_t i, n
+        size_t offset
+
+    # Prefix contains
+    # size:size_t
+    # bins_per_dalton:uint32_t
+    # max_fragment_size:float64_t
+    # sort_type:uint8_t
+    offset = sizeof(size_t) + sizeof(uint32_t) + sizeof(float64_t) + sizeof(uint8_t)
+    return 1
 
 # Fragment Index Search Methods
 

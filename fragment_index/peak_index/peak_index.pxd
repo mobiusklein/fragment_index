@@ -26,7 +26,7 @@ cdef struct interval_t:
     size_t end
 
 include "peak_list.pxd"
-include "parent_list.pxd"
+include "../parent_list.pxd"
 
 cdef struct peak_index_t:
     peak_list_t* bins

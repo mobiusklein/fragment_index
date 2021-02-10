@@ -134,6 +134,15 @@ cdef int fragment_list_binary_search(fragment_list_t* self, double query, double
     return 1
 
 
+cdef size_t fragment_list_byte_size(fragment_list_t* self) nogil:
+    cdef:
+        size_t n
+        size_t offset
+    offset = sizeof(size_t) + sizeof(uint8_t)
+    n = sizeof(fragment_t) * self.used + 1
+    return offset + n
+
+
 cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer, size_t* buffer_size) nogil:
     cdef:
         char* byte_buffer
@@ -141,7 +150,7 @@ cdef int fragment_list_to_bytes(fragment_list_t* self, char** output_buffer, siz
         size_t offset
     offset = sizeof(size_t) + sizeof(uint8_t)
     n = sizeof(fragment_t) * self.used + 1
-    byte_buffer = <char*>malloc(offset + sizeof(char) * n + 1)
+    byte_buffer = <char*>malloc(offset + sizeof(char) * n)
     if byte_buffer == NULL:
         return 1
     for i in range(offset + sizeof(char) * n + 1):

@@ -4,6 +4,7 @@ ctypedef np.uint64_t uint64_t
 ctypedef np.uint32_t uint32_t
 
 ctypedef np.float32_t float32_t
+ctypedef np.float64_t float64_t
 
 ctypedef np.int32_t int32_t
 ctypedef np.int64_t int64_t
@@ -42,8 +43,8 @@ cdef struct fragment_index_t:
     fragment_list_t* bins
     parent_list_t* parent_index
     size_t size
-    int bins_per_dalton
-    double max_fragment_size
+    uint32_t bins_per_dalton
+    float64_t max_fragment_size
     uint8_t sort_type
 
 
@@ -72,7 +73,7 @@ cdef bint interval_is_empty(interval_t* self) nogil
 cdef bint interval_eq(interval_t* self, interval_t* other) nogil
 
 # fragment_index_t methods
-cdef int init_fragment_index(fragment_index_t* self, int bins_per_dalton=*, double max_fragment_size=*) nogil
+cdef int init_fragment_index(fragment_index_t* self, uint32_t bins_per_dalton=*, float64_t max_fragment_size=*) nogil
 cdef int free_fragment_index(fragment_index_t* self) nogil
 cpdef size_t total_bins_for_mass(int bins_per_dalton, double max_fragment_size) nogil
 cdef size_t bin_for_mass(fragment_index_t* self, double mass) nogil
